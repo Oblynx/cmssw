@@ -1,4 +1,4 @@
-#include "FWCore/Services/src/thread_pool.h"
+#include "FWCore/Services/interface/thread_pool.h"
 
 #include <vector>
 #include <queue>
@@ -13,6 +13,7 @@
 
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
 #include "FWCore/ServiceRegistry/interface/ActivityRegistry.h"
+#include "FWCore/ServiceRegistry/interface/Service.h"
 
 namespace edm{
 namespace service{
@@ -65,7 +66,7 @@ std::future<typename std::result_of<F(Args...)>::type>
 }
 
 // the destructor joins all threads
-virtual ThreadPoolService::~ThreadPoolService()
+ThreadPoolService::~ThreadPoolService()
 {
 	this->stop_ = true;
 	this->condition_.notify_all();

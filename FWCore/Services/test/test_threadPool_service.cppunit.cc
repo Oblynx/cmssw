@@ -1,5 +1,7 @@
 // Interface to test
-#include "FWCore/Services/plugins/thread_poolUNI.cc"
+#include "FWCore/Services/plugins/thread_poolUNI.hxx"
+#include "FWCore/Services/interface/PrintLoadingPlugins.h"
+
 // std
 #include <iostream>
 #include <vector>
@@ -14,6 +16,10 @@
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
 #include "FWCore/ServiceRegistry/interface/ActivityRegistry.h"
 #include "FWCore/ServiceRegistry/interface/Service.h"
+#include "FWCore/ServiceRegistry/interface/ServiceRegistry.h"
+
+#include "FWCore/PluginManager/interface/standard.h"
+#include "FWCore/PluginManager/interface/PluginManager.h"
 // cppunit-specific
 #include "cppunit/extensions/HelperMacros.h"
 #include "Utilities/Testing/interface/CppUnit_testdriver.icpp"
@@ -21,6 +27,7 @@
 class TestThreadPoolService: public CppUnit::TestFixture {
   CPPUNIT_TEST_SUITE(TestThreadPoolService);
   CPPUNIT_TEST(basicUseTest);
+  //CPPUNIT_TEST(CUDATest);
   CPPUNIT_TEST_SUITE_END();
 public:
   void setUp(){
@@ -29,6 +36,7 @@ public:
   }
   void tearDown(){};
   void basicUseTest();
+  void CUDATest();
 private:
   void print_id(int id);
   void go();
@@ -59,15 +67,23 @@ void TestThreadPoolService::go() {
 
 void TestThreadPoolService::basicUseTest()
 {
-  // Make the service.
-  edm::ParameterSet paramset;
-  edm::ActivityRegistry activityreg;
-  edm::service::ThreadPoolService pool(paramset, activityreg);
-  //edm::Service<edm::service::ThreadPoolService> pool;
+  // Init modelled after "FWCore/Catalog/test/FileLocator_t.cpp"
+  // Make the services.
+  edmplugin::PluginManager::configure(edmplugin::standard::config());
+  edm::ServiceToken tempToken = edm::ServiceRegistry::createServicesFromConfig(
+      "import FWCore.ParameterSet.Config as cms\n"
+      "process = cms.Process('testThreadPoolService')\n"
+      "process.ThreadPoolService = cms.Service('ThreadPoolService')\n"
+      "process.PrintLoadingPlugins = cms.Service('PrintLoadingPlugins')\n"
+      );
+  //make the services available
+  edm::ServiceRegistry::Operate operate(tempToken);
+  //edm::service::ThreadPoolService pool(paramset, activityreg);
+  edm::Service<edm::service::ThreadPoolService> pool;
   std::cout<<"\nStarting test...\n";
   std::this_thread::sleep_for(std::chrono::seconds(1));
-  std::cout<<"...Started!\n";
-  pool.enqueue([]() {std::cout<<"Empty task\n";});
+  std::cout<<"...Started\n";
+  pool->enqueue([]() {std::cout<<"Empty task\n";});
 
   std::cout<<"[ThreadPoolService::basicUseTest] Service initialized\n";
   std::vector<std::future<void>> futures;
@@ -75,7 +91,7 @@ void TestThreadPoolService::basicUseTest()
 
   // spawn N threads:
   for (int i=0; i<N; ++i)
-    futures.emplace_back(pool.enqueue(&TestThreadPoolService::print_id, this,i+1));
+    futures.emplace_back(pool->enqueue(&TestThreadPoolService::print_id, this,i+1));
   go();
 
   for (auto& future: futures) future.get();
@@ -84,3 +100,9 @@ void TestThreadPoolService::basicUseTest()
 		sum-= i+1;
   CPPUNIT_ASSERT_EQUAL(sum, 0l);
 }
+
+void TestThreadPoolService::CUDATest()
+{
+  
+}
+

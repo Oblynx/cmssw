@@ -362,4 +362,3 @@ CondorStatusService::fillDescriptions(ConfigurationDescriptions &descriptions)
 
 typedef edm::serviceregistry::AllArgsMaker<edm::service::CondorStatusService> CondorStatusServiceMaker;
 DEFINE_FWK_SERVICE_MAKER(CondorStatusService,CondorStatusServiceMaker);
-

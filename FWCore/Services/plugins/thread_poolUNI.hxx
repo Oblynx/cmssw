@@ -19,6 +19,9 @@ freely, subject to the following restrictions:
 Editor: Konstantinos Samaras-Tsakiris, kisamara@auth.gr
 */
 
+#ifndef Thread_Pool_Service_Hxx
+#define Thread_Pool_Service_Hxx
+
 #include <iostream>
 
 #include <vector>
@@ -32,6 +35,7 @@ Editor: Konstantinos Samaras-Tsakiris, kisamara@auth.gr
 #include <functional>
 #include <stdexcept>
 
+#include "FWCore/ParameterSet/interface/ConfigurationDescriptions.h"
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
 #include "FWCore/ServiceRegistry/interface/ActivityRegistry.h"
 #include "FWCore/ServiceRegistry/interface/Service.h"
@@ -52,6 +56,10 @@ public:
 	ThreadPoolService& operator=(const ThreadPoolService&) = delete;
 	ThreadPoolService(ThreadPoolService&&) = delete;
 	ThreadPoolService& operator=(ThreadPoolService&&) = delete;
+
+  static void fillDescriptions(edm::ConfigurationDescriptions& descr){
+    descr.add("ThreadPoolService", edm::ParameterSetDescription());
+  }
 
   // add new work item to the pool
   template<class F, class... Args>
@@ -141,5 +149,8 @@ ThreadPoolService::~ThreadPoolService()
 }
 
 #include "FWCore/ServiceRegistry/interface/ServiceMaker.h"
-typedef edm::serviceregistry::NoArgsMaker<ThreadPoolService> ThreadPoolServiceMaker;
-DEFINE_FWK_SERVICE_MAKER(ThreadPoolService, ThreadPoolServiceMaker);
+/*typedef edm::serviceregistry::NoArgsMaker<ThreadPoolService> ThreadPoolServiceMaker;
+DEFINE_FWK_SERVICE_MAKER(ThreadPoolService, ThreadPoolServiceMaker);*/
+DEFINE_FWK_SERVICE(ThreadPoolService);
+
+#endif // Thread_Pool_Service_Hxx

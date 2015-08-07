@@ -33,6 +33,8 @@ Editor: Konstantinos Samaras-Tsakiris, kisamara@auth.gr
 #include <functional>
 #include <stdexcept>
 
+#include <iostream>
+#include "FWCore/ParameterSet/interface/ConfigurationDescriptions.h"
 
 namespace edm{
 class ParameterSet;
@@ -50,6 +52,13 @@ public:
 	ThreadPoolService& operator=(const ThreadPoolService&) = delete;
 	ThreadPoolService(ThreadPoolService&&) = delete;
 	ThreadPoolService& operator=(ThreadPoolService&&) = delete;
+
+  static void fillDescriptions(edm::ConfigurationDescriptions& descr){
+    descr.add("ThreadPoolService", edm::ParameterSetDescription());
+  }
+  void dummy(){
+    std::cout<<"Hello World!\n";
+  }
 
   // add new work item to the pool
   template<class F, class... Args>

@@ -1,3 +1,4 @@
+
 <library   file="FpeTester.cc" name="FpeTester">
   <flags   EDM_PLUGIN="1"/>
   <use   name="FWCore/PluginManager"/>
@@ -19,12 +20,21 @@
   <use   name="FWCore/Utilities"/>
 </bin>
 
-<bin   name="TestThreadPoolService" file="test_threadPool_service.cppunit.cc">
-  <use name="FWCore/Services"/>
-  <use name="FWCore/Framework"/>
+<bin   name="TestThreadPoolService" file="test_threadPool_service.cppunit.cu">
+  <lib name="~/ws/CMSSW_7_6_0_pre2/lib/slc6_amd64_gcc491/libFWCoreServices.so"/>
+  <lib name="FWCoreServices"/>
+  <!--<use name="FWCore/Services"/>-->
   <use name="FWCore/ServiceRegistry"/>
   <use name="FWCore/PluginManager"/>
-  <use name="FWCore/ParameterSet"/>
   <use name="FWCore/Utilities"/>
   <use name="cppunit"/>
 </bin>
+<!--
+<bin name="Hello" file="hello.cu">
+  <use name="FWCore/Services"/>
+  <use name="FWCore/ServiceRegistry"/>
+  <use name="FWCore/PluginManager"/>
+  <use name="FWCore/Utilities"/>
+  <use name="cppunit"/>
+</bin>
+-->

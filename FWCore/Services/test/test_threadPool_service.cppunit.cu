@@ -6,6 +6,7 @@
 #include <vector>
 #include <future>
 #include <mutex>
+#include <atomic>
 #include <condition_variable>
 
 #include <thread>
@@ -25,17 +26,17 @@
 class TestThreadPoolService: public CppUnit::TestFixture {
   CPPUNIT_TEST_SUITE(TestThreadPoolService);
   CPPUNIT_TEST(basicUseTest);
-  //CPPUNIT_TEST(CUDATest);
+  CPPUNIT_TEST(CUDATest);
   CPPUNIT_TEST_SUITE_END();
 public:
   void setUp();
   void tearDown(){};
   void basicUseTest();
-  //void CUDATest();
+  void CUDATest();
 private:
   void print_id(int id);
   void go();
-  //void cudaTask(int n, int i, const float* din, int times);
+  void cudaTask(int n, int i, const float* din, int times);
   //--$--//
   std::mutex mtx;
   std::condition_variable cv;
@@ -47,7 +48,7 @@ private:
 
 ///registration of the test so that the runner can find it
 CPPUNIT_TEST_SUITE_REGISTRATION(TestThreadPoolService);
-/*
+
 __global__ void longKernel(int n, int times, const float* in, float* out)
 {
   int x= blockIdx.x*blockDim.x + threadIdx.x;
@@ -57,12 +58,15 @@ __global__ void longKernel(int n, int times, const float* in, float* out)
       out[x]+= in[x];
     }
   }
-}*/
+}
 void TestThreadPoolService::setUp(){
-  // Init modelled after "FWCore/Catalog/test/FileLocator_t.cpp"
-  // Make the services.
-  edmplugin::PluginManager::configure(edmplugin::standard::config());
-  serviceToken = edm::ServiceRegistry::createServicesFromConfig(
+  static std::atomic_flag notFirstTime= ATOMIC_FLAG_INIT;
+  if (!notFirstTime.test_and_set()){
+    // Init modelled after "FWCore/Catalog/test/FileLocator_t.cpp"
+    // Make the services.
+    edmplugin::PluginManager::configure(edmplugin::standard::config());
+  }
+  serviceToken= edm::ServiceRegistry::createServicesFromConfig(
       "import FWCore.ParameterSet.Config as cms\n"
       "process = cms.Process('testThreadPoolService')\n"
       "process.ThreadPoolService = cms.Service('ThreadPoolService')\n"
@@ -81,7 +85,7 @@ void TestThreadPoolService::go() {
   ready = true;
   cv.notify_all();
 }
-/*
+
 void TestThreadPoolService::cudaTask(int n, int i, const float* din, int times){
   float *dout;
   cudaMalloc((void **) &dout, n*sizeof(float));
@@ -94,8 +98,7 @@ void TestThreadPoolService::cudaTask(int n, int i, const float* din, int times){
   std::cout << "GPU::" << out << "\t";
   cudaFree(dout);
 }
-*/
-struct T{int a;};
+
 
 void TestThreadPoolService::basicUseTest()
 {
@@ -104,13 +107,7 @@ void TestThreadPoolService::basicUseTest()
   //edm::service::ThreadPoolService pool(paramset, activityreg);
   edm::Service<edm::service::ThreadPoolService> pool;
   std::cout<<"\nStarting basic test...\n";
-  //pool->enqueue([]() {std::cout<<"Empty task\n";}).get();
-  TestDefinitionsLink testDef;
-  testDef.doIt();
-  T t;
-  t.a= 0;
-  testDef.tDoIt(t);
-  CPPUNIT_ASSERT_EQUAL(t.a, 1);
+  pool->enqueue([]() {std::cout<<"Empty task\n";}).get();
 
   std::cout<<"[ThreadPoolService::basicUseTest] Service initialized\n";
   std::vector<std::future<void>> futures;
@@ -118,7 +115,7 @@ void TestThreadPoolService::basicUseTest()
 
   // spawn N threads:
   for (int i=0; i<N; ++i)
-    //futures.emplace_back(pool->enqueue(&TestThreadPoolService::print_id, this,i+1));
+    futures.emplace_back(pool->enqueue(&TestThreadPoolService::print_id, this,i+1));
   go();
 
   for (auto& future: futures) future.get();
@@ -127,9 +124,11 @@ void TestThreadPoolService::basicUseTest()
 		sum-= i+1;
   CPPUNIT_ASSERT_EQUAL(sum, 0l);
 }
-/*
+
 void TestThreadPoolService::CUDATest()
 {
+  //make the services available
+  edm::ServiceRegistry::Operate operate(serviceToken);
   edm::Service<edm::service::ThreadPoolService> pool;
   std::cout<<"\nStarting CUDA test...\n";
   std::vector<std::future<void>> futures;
@@ -150,4 +149,3 @@ void TestThreadPoolService::CUDATest()
   }
   for (auto& future: futures) future.get();
 }
-*/

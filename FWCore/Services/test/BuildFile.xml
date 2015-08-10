@@ -20,19 +20,10 @@
   <use   name="FWCore/Utilities"/>
 </bin>
 
-<bin   name="TestThreadPoolService" file="test_threadPool_service.cppunit.cc">
+<bin   name="TestThreadPoolService" file="test_threadPool_service.cppunit.cu">
   <use name="FWCore/Services"/>
   <use name="FWCore/ServiceRegistry"/>
   <use name="FWCore/PluginManager"/>
   <use name="FWCore/Utilities"/>
   <use name="cppunit"/>
 </bin>
-<!--
-<bin name="Hello" file="hello.cu">
-  <use name="FWCore/Services"/>
-  <use name="FWCore/ServiceRegistry"/>
-  <use name="FWCore/PluginManager"/>
-  <use name="FWCore/Utilities"/>
-  <use name="cppunit"/>
-</bin>
--->

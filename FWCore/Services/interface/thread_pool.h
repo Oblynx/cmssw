@@ -35,12 +35,24 @@ Editor: Konstantinos Samaras-Tsakiris, kisamara@auth.gr
 #include <functional>
 #include <stdexcept>
 
+#include "FWCore/ParameterSet/interface/ConfigurationDescriptions.h"
+#include "FWCore/ParameterSet/interface/ParameterSet.h"
+#include "FWCore/ServiceRegistry/interface/ActivityRegistry.h"
+
 struct TestDefinitionsLink{
   TestDefinitionsLink(): a(0) {}
   int a;
   void doIt();
   template<class T> void tDoIt(T& t);
 };
+
+void TestDefinitionsLink::doIt(){
+  a= 1;
+}
+template<class T>
+void TestDefinitionsLink::tDoIt(T& t){
+  t.a= a;
+}
 
 namespace edm{
 class ParameterSet;
@@ -51,9 +63,6 @@ namespace service{
 // std::thread pool for resources recycling
 class ThreadPoolService {
 public:
-  ThreadPoolService(){
-    std::cout<<"\nDEFAULT constructing a ThreadPoolService!\n";
-  }
   // the constructor just launches some amount of workers
   ThreadPoolService(const edm::ParameterSet&, edm::ActivityRegistry&);
   // deleted copy&move ctors&assignments
@@ -61,14 +70,35 @@ public:
 	ThreadPoolService& operator=(const ThreadPoolService&) = delete;
 	ThreadPoolService(ThreadPoolService&&) = delete;
 	ThreadPoolService& operator=(ThreadPoolService&&) = delete;
-  static void fillDescriptions(edm::ConfigurationDescriptions& descr);
+  static void fillDescriptions(edm::ConfigurationDescriptions& descr){
+    descr.add("ThreadPoolService", edm::ParameterSetDescription());
+  }
 
   // add new work item to the pool
   template<class F, class... Args>
-	std::future<typename std::result_of<F(Args...)>::type> enqueue(F&& f, Args&&... args);
+	std::future<typename std::result_of<F(Args...)>::type> enqueue(F&& f, Args&&... args)
+  {
+    using packaged_task_t = std::packaged_task<typename std::result_of<F(Args...)>::type ()>;
+
+    std::shared_ptr<packaged_task_t> task(new packaged_task_t(
+                      std::bind(std::forward<F>(f), std::forward<Args>(args)...)
+    ));
+    auto resultFut = task->get_future();
+    {
+      std::unique_lock<std::mutex> lock(this->queue_mutex_);
+      this->tasks_.emplace([task](){ (*task)(); });
+    }
+    this->condition_.notify_one();
+    return resultFut;
+  }
 
   // the destructor joins all threads
-	virtual ~ThreadPoolService();
+	virtual ~ThreadPoolService(){
+    this->stop_ = true;
+    this->condition_.notify_all();
+    for(std::thread& worker : this->workers_)
+      worker.join();
+  }
 
 private:
   // need to keep track of threads so we can join them
@@ -83,7 +113,35 @@ private:
 	std::atomic_bool stop_;
 };
 
+// the constructor just launches some amount of workers
+ThreadPoolService::ThreadPoolService(const edm::ParameterSet&, edm::ActivityRegistry&): stop_(false)
+{
+  size_t threads_n = std::thread::hardware_concurrency();
+  if(!threads_n)
+    throw std::invalid_argument("more than zero threads expected");
+
+  this->workers_.reserve(threads_n);
+  for(; threads_n; --threads_n)
+    this->workers_.emplace_back([this] (){
+      while(true)
+      {
+        std::function<void()> task;
+
+        {
+          std::unique_lock<std::mutex> lock(this->queue_mutex_);
+          this->condition_.wait(lock,
+                               [this]{ return this->stop_ || !this->tasks_.empty(); });
+          if(this->stop_ && this->tasks_.empty())
+            return;
+          task = std::move(this->tasks_.front());
+          this->tasks_.pop();
+        }
+
+        task();
+     }
+    });
+}
+
 } // namespace service
 } // namespace edm
-
 #endif // Thread_Pool_Service_H

@@ -35,6 +35,12 @@ Editor: Konstantinos Samaras-Tsakiris, kisamara@auth.gr
 #include <functional>
 #include <stdexcept>
 
+struct TestDefinitionsLink{
+  TestDefinitionsLink(): a(0) {}
+  int a;
+  void doIt();
+  template<class T> void tDoIt(T& t);
+};
 
 namespace edm{
 class ParameterSet;

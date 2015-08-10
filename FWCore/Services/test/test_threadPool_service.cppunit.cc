@@ -95,6 +95,8 @@ void TestThreadPoolService::cudaTask(int n, int i, const float* din, int times){
   cudaFree(dout);
 }
 */
+struct T{int a;};
+
 void TestThreadPoolService::basicUseTest()
 {
   //make the services available
@@ -102,7 +104,13 @@ void TestThreadPoolService::basicUseTest()
   //edm::service::ThreadPoolService pool(paramset, activityreg);
   edm::Service<edm::service::ThreadPoolService> pool;
   std::cout<<"\nStarting basic test...\n";
-  pool->enqueue([]() {std::cout<<"Empty task\n";}).get();
+  //pool->enqueue([]() {std::cout<<"Empty task\n";}).get();
+  TestDefinitionsLink testDef;
+  testDef.doIt();
+  T t;
+  t.a= 0;
+  testDef.tDoIt(t);
+  CPPUNIT_ASSERT_EQUAL(t.a, 1);
 
   std::cout<<"[ThreadPoolService::basicUseTest] Service initialized\n";
   std::vector<std::future<void>> futures;
@@ -110,7 +118,7 @@ void TestThreadPoolService::basicUseTest()
 
   // spawn N threads:
   for (int i=0; i<N; ++i)
-    futures.emplace_back(pool->enqueue(&TestThreadPoolService::print_id, this,i+1));
+    //futures.emplace_back(pool->enqueue(&TestThreadPoolService::print_id, this,i+1));
   go();
 
   for (auto& future: futures) future.get();

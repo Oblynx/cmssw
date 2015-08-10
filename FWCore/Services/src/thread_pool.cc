@@ -18,6 +18,14 @@
 #include "FWCore/ServiceRegistry/interface/ActivityRegistry.h"
 #include "FWCore/ServiceRegistry/interface/Service.h"
 
+void TestDefinitionsLink::doIt(){
+  a= 1;
+}
+template<class T>
+void TestDefinitionsLink::tDoIt(T& t){
+  t.a= a;
+}
+
 using namespace edm::service;
 
 // the constructor just launches some amount of workers

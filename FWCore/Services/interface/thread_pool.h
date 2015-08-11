@@ -35,6 +35,9 @@ Editor: Konstantinos Samaras-Tsakiris, kisamara@auth.gr
 #include <functional>
 #include <stdexcept>
 
+//#include <cuda_runtime_api.h>
+#include <cuda_runtime.h>
+
 #include "FWCore/ParameterSet/interface/ConfigurationDescriptions.h"
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
 #include "FWCore/ServiceRegistry/interface/ActivityRegistry.h"
@@ -75,8 +78,8 @@ public:
   }
 
   // add new work item to the pool
-  template<class F, class... Args>
-	std::future<typename std::result_of<F(Args...)>::type> enqueue(F&& f, Args&&... args)
+  template<typename F, typename... Args>
+	inline std::future<typename std::result_of<F(Args...)>::type> enqueue(F&& f, Args&&... args)
   {
     using packaged_task_t = std::packaged_task<typename std::result_of<F(Args...)>::type ()>;
 
@@ -90,6 +93,13 @@ public:
     }
     this->condition_.notify_one();
     return resultFut;
+  }
+
+  template<typename K, typename... Args>
+  void launchKernelManaged(K&& kernel, Args&&... args){
+    enqueue([](K&& kernel, Args&&... args) {
+      kernel<<<1,1>>>(std::forward<Args>(args)...);
+    }, std::forward<K>(kernel), std::forward<Args>(args)...).get();
   }
 
   // the destructor joins all threads
@@ -116,6 +126,8 @@ private:
 // the constructor just launches some amount of workers
 ThreadPoolService::ThreadPoolService(const edm::ParameterSet&, edm::ActivityRegistry&): stop_(false)
 {
+  std::cout<<"Constructing ThreadPoolService\n";
+  // TODO(ksamaras): Check num GPUs, threads_n= 4*GPUs
   size_t threads_n = std::thread::hardware_concurrency();
   if(!threads_n)
     throw std::invalid_argument("more than zero threads expected");
@@ -144,4 +156,5 @@ ThreadPoolService::ThreadPoolService(const edm::ParameterSet&, edm::ActivityRegi
 
 } // namespace service
 } // namespace edm
+
 #endif // Thread_Pool_Service_H

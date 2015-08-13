@@ -28,15 +28,18 @@ class TestThreadPoolService: public CppUnit::TestFixture {
   CPPUNIT_TEST(basicUseTest);
   CPPUNIT_TEST(passServiceArgTest);
   CPPUNIT_TEST(CUDATest);
-  CPPUNIT_TEST(CUDAAutolaunchTest);
+  CPPUNIT_TEST(CUDAAutolaunchManagedTest);
   CPPUNIT_TEST_SUITE_END();
 public:
   void setUp();
   void tearDown() {std::cout<<"\n";}
   void basicUseTest();
-  void CUDATest();
+  //!< @brief Test behaviour if the task itself enqueues another task in same pool
   void passServiceArgTest();
-  void CUDAAutolaunchTest();
+  //!< @brief Test scheduling many threads that launch CUDA kernels
+  void CUDATest();
+  //!< @brief Test auto launch cuda kernel with its arguments in managed memory
+  void CUDAAutolaunchManagedTest();
 private:
   void print_id(int id);
   void go();
@@ -57,7 +60,7 @@ private:
 ///registration of the test so that the runner can find it
 CPPUNIT_TEST_SUITE_REGISTRATION(TestThreadPoolService);
 
-__global__ void longKernel(int n, int times, const float* in, float* out)
+__global__ void longKernel(const int n, const int times, const float* in, float* out)
 {
   int x= blockIdx.x*blockDim.x + threadIdx.x;
   if (x < n){
@@ -107,7 +110,7 @@ void TestThreadPoolService::basicUseTest()
   edm::ServiceRegistry::Operate operate(serviceToken);
   edm::Service<edm::service::ThreadPoolService> pool;
   std::cout<<"\nStarting basic test...\n";
-  pool->enqueue([]() {std::cout<<"Empty task\n";}).get();
+  pool->getFuture([]() {std::cout<<"Empty task\n";}).get();
 
   std::cout<<"[ThreadPoolService::basicUseTest] Service initialized\n";
   std::vector<std::future<void>> futures;
@@ -115,7 +118,7 @@ void TestThreadPoolService::basicUseTest()
 
   // spawn N threads:
   for (int i=0; i<N; ++i)
-    futures.emplace_back(pool->enqueue(&TestThreadPoolService::print_id, this,i+1));
+    futures.emplace_back(pool->getFuture(&TestThreadPoolService::print_id, this,i+1));
   go();
 
   for (auto& future: futures) future.get();
@@ -124,25 +127,23 @@ void TestThreadPoolService::basicUseTest()
 		sum-= i+1;
   CPPUNIT_ASSERT_EQUAL(sum, 0l);
 }
-//!< @brief Test behaviour if the task itself enqueues another task in same pool
 void TestThreadPoolService::passServiceArgTest()
 {
   //make the services available
   edm::ServiceRegistry::Operate operate(serviceToken);
   edm::Service<edm::service::ThreadPoolService> pool;
   std::cout<<"\nStarting passServiceArg test...\n";
-  pool->enqueue([&]() {
+  pool->getFuture([&]() {
     std::cout<<"Recursive enqueue #1\n";
     edm::ServiceRegistry::Operate operate(serviceToken);
-    pool->enqueue([]() {std::cout<<"Pool service captured\n";}).get();
+    pool->getFuture([]() {std::cout<<"Pool service captured\n";}).get();
   }).get();
-  pool->enqueue([this](edm::Service<edm::service::ThreadPoolService> poolArg){
+  pool->getFuture([this](edm::Service<edm::service::ThreadPoolService> poolArg){
     std::cout<<"Recursive enqueue #2\n";
     edm::ServiceRegistry::Operate operate(serviceToken);
-    poolArg->enqueue([]() {std::cout<<"Pool service passed as arg\n";}).get();
+    poolArg->getFuture([]() {std::cout<<"Pool service passed as arg\n";}).get();
   }, pool).get();
 }
-//!< @brief Test scheduling many threads that launch CUDA kernels
 void TestThreadPoolService::CUDATest()
 {
   //make the services available
@@ -162,27 +163,28 @@ void TestThreadPoolService::CUDATest()
 
   // spawn N threads
   for (int i=0; i<N; ++i){
-    futures.emplace_back(pool->enqueue(&TestThreadPoolService::cudaTask, this,
+    futures.emplace_back(pool->getFuture(&TestThreadPoolService::cudaTask, this,
                          n, i, din, 2));
   }
   for (auto& future: futures) future.get();
 }
-//!< @brief 
-void TestThreadPoolService::CUDAAutolaunchTest()
+void TestThreadPoolService::CUDAAutolaunchManagedTest()
 {
   //make the services available
   edm::ServiceRegistry::Operate operate(serviceToken);
   edm::Service<edm::service::ThreadPoolService> pool;
-  std::cout<<"\nStarting CUDA autolaunch test...\n";
+  std::cout<<"\nStarting CUDA autolaunch (managed) test...\n";
   float *in, *out;
-  const int n= 20, times= 1;
-  cudaMallocManaged(&in, n*sizeof(float), cudaMemAttachHost);
+  const int n= 50, times= 1;
+  cudaMallocManaged(&in, n*sizeof(float));  //cudaMemAttachHost?
   cudaMallocManaged(&out, n*sizeof(float));
   for(int i=0; i<n; i++) in[i]= 10*cos(3.141592/100*i);
 
-  pool->launchKernelManaged(longKernel, n,times,in,out);
+  std::cout<<"Launching...\n";
+  pool->cudaLaunchManaged(longKernel, (int)n,(int)times,
+                          const_cast<const float*>(in),out).get();
 
-  for(int i=0; i<n; i++) CPPUNIT_ASSERT_EQUAL(out[i],times*in[i]);
+  for(int i=0; i<n; i++) CPPUNIT_ASSERT_EQUAL(times*in[i], out[i]);
   cudaFree(in);
   cudaFree(out);
 }

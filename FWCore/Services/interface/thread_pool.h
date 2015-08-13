@@ -77,14 +77,15 @@ public:
     descr.add("ThreadPoolService", edm::ParameterSetDescription());
   }
 
-  // add new work item to the pool
+  // Schedule task and get its future handle
   template<typename F, typename... Args>
-	inline std::future<typename std::result_of<F(Args...)>::type> enqueue(F&& f, Args&&... args)
+	inline std::future<typename std::result_of<F(Args...)>::type>
+    getFuture(F&& f, Args&&... args)
   {
     using packaged_task_t = std::packaged_task<typename std::result_of<F(Args...)>::type ()>;
 
     std::shared_ptr<packaged_task_t> task(new packaged_task_t(
-                      std::bind(std::forward<F>(f), std::forward<Args>(args)...)
+      std::bind(std::forward<F>(f), std::forward<Args>(args)...)
     ));
     auto resultFut = task->get_future();
     {
@@ -94,12 +95,40 @@ public:
     this->condition_.notify_one();
     return resultFut;
   }
-
-  template<typename K, typename... Args>
-  void launchKernelManaged(K&& kernel, Args&&... args){
-    enqueue([](K&& kernel, Args&&... args) {
-      kernel<<<1,1>>>(std::forward<Args>(args)...);
-    }, std::forward<K>(kernel), std::forward<Args>(args)...).get();
+/*
+  class cudaTask{
+  public:
+    template<typename... Args>
+    void operator()(void (*f)(Args...), Args... args){
+    #ifdef __NVCC__
+      std::cout<<"[In task]...\n";
+      f<<<10,10>>>(args...);
+      std::cout<<"[In task]: Launched\n";
+      cudaStreamSynchronize(cudaStreamPerThread);
+      std::cout<<"[In task]: Synced\n";
+    #else
+      f(args...);
+    #endif
+    }
+  };
+*/
+  // Launch __global__ kernel function with explicit configuration
+  template <typename F, typename... Args>
+  std::future<typename std::result_of<F(Args...)>::type>
+    cudaLaunchManaged(F&& f, Args&&... args)
+  {
+    //return getFuture(cudaTask, f, args...);
+    return getFuture([&](){
+    #ifdef __NVCC__
+      //std::cout<<"[In task]...\n";
+      f<<<10,10>>>(args...);
+      //std::cout<<"[In task]: Launched\n";
+      cudaStreamSynchronize(cudaStreamPerThread);
+      //std::cout<<"[In task]: Synced\n";
+    #else
+      f(args...);
+    #endif 
+    });
   }
 
   // the destructor joins all threads

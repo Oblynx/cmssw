@@ -124,7 +124,7 @@ public:
     return *this;
   }
   // Manual launch configuration
-  cudaConfig::ExecutionPolicy& getExecPol(){ return *execPol_; }
+  cudaConfig::ExecutionPolicy& getExecPolicy(){ return *execPol_; }
 #endif 
   // Overload: differentiate between managed-nonmanaged args
   /*template<typename F, typename... NMArgs, template<typename...> class NM,

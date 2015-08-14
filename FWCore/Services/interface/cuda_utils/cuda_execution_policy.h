@@ -43,21 +43,25 @@ public:
     int    getMaxBlockSize()   const { return mMaxBlockSize;   }
     size_t getSharedMemBytes() const { return mSharedMemBytes; }
  
-    void setGridSize(int arg) { 
+    ExecutionPolicy& setGridSize(int arg) { 
         mGridSize = arg;  
         if (mGridSize > 0) mState |= GridSize; 
         else mState &= (FullManual - GridSize);
+        return *this;
     }   
-    void setBlockSize(int arg) { mBlockSize = arg; 
+    ExecutionPolicy& setBlockSize(int arg) { mBlockSize = arg; 
         if (mBlockSize > 0) mState |= BlockSize; 
         else mState &= (FullManual - BlockSize);
+        return *this;
     }
-    void setMaxBlockSize(int arg) {
+    ExecutionPolicy& setMaxBlockSize(int arg) {
     	mMaxBlockSize = arg;
+        return *this;
     }
-    void setSharedMemBytes(size_t arg) { 
+    ExecutionPolicy& setSharedMemBytes(size_t arg) { 
         mSharedMemBytes = arg; 
         mState |= SharedMem; 
+        return *this;
     }
 
 private:

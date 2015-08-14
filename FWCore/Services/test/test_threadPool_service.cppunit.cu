@@ -171,6 +171,8 @@ void TestThreadPoolService::CUDATest()
   }
   for (auto& future: futures) future.get();
 }
+
+#define TOLERANCE 5e-1
 void TestThreadPoolService::CUDAAutolaunchManagedTest()
 {
   //make the services available
@@ -178,24 +180,36 @@ void TestThreadPoolService::CUDAAutolaunchManagedTest()
   Service<service::ThreadPoolService> pool;
   cout<<"\nStarting CUDA autolaunch (managed) test...\n";
   float *in, *out;
-  const int n= 100000000, times= 3000;
+  const int n= 10000000, times= 1000;
   cudaMallocManaged(&in, n*sizeof(float));  //cudaMemAttachHost?
   cudaMallocManaged(&out, n*sizeof(float));
   for(int i=0; i<n; i++) in[i]= 10*cos(3.141592/100*i);
 
-  cout<<"Launching...\n";
+  cout<<"Launching auto...\n";
+  // Auto launch config
   pool->configureLaunch(n, longKernel).
         cudaLaunchManaged(longKernel, (int)n,(int)times,
                           const_cast<const float*>(in),out).get();
+  for(int i=0; i<n; i++) if (times*in[i]-out[i]>TOLERANCE || times*in[i]-out[i]<-TOLERANCE){
+    cout<<"ERROR: i="<<i<<'\n';
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(times*in[i], out[i], TOLERANCE);
+  }
+
+  cout<<"Launching manual...\n";
+  // Manual launch config
+  pool->getExecPolicy().setBlockSize(32*12).
+                        setGridSize((n-1+32*12)/(32*12));
+  pool->cudaLaunchManaged(longKernel, (int)n,(int)times,
+                          const_cast<const float*>(in),out).get();
+  for(int i=0; i<n; i++) if (times*in[i]-out[i]>TOLERANCE || times*in[i]-out[i]<-TOLERANCE){
+    cout<<"ERROR: i="<<i<<'\n';
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(times*in[i], out[i], TOLERANCE);
+  }
 /*
   pool->cudaLaunchManaged(longKernel,
                           service::NonManagedArgs<int>((int)n),
                           service::ManagedArgs<>());*/
 
-  for(int i=0; i<n; i++) if (times*in[i]-out[i]>5e-0 || times*in[i]-out[i]<-5e-0){
-    cout<<"ERROR: i="<<i<<'\n';
-    CPPUNIT_ASSERT_DOUBLES_EQUAL(times*in[i], out[i], 5e-0);
-  }
   cudaFree(in);
   cudaFree(out);
 }

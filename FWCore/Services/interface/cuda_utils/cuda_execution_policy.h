@@ -26,13 +26,7 @@ public:
         GridSize = 4,
         FullManual = GridSize | BlockSize | SharedMem
     };
-/*
-    ExecutionPolicy() 
-    : mState(Automatic), 
-      mGridSize(0), 
-      mBlockSize(0), 
-      mSharedMemBytes(0) {}
-*/  
+
     ExecutionPolicy(int gridSize=0, int blockSize=0, size_t sharedMemBytes=0)
     : mState(0) {
       setGridSize(gridSize);

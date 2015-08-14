@@ -37,6 +37,7 @@ Editor: Konstantinos Samaras-Tsakiris, kisamara@auth.gr
 
 #ifdef __NVCC__
 #include "cuda_utils/cuda_launch_configuration.h"
+#include "cuda_utils/cuda_execution_policy.h"
 #endif
 
 #include "FWCore/ParameterSet/interface/ConfigurationDescriptions.h"
@@ -102,26 +103,29 @@ public:
     return resultFut;
   }
 
+#ifdef __NVCC__
   // Launch kernel function with args
+  // Configure execution policy before launch!
   template<typename F, typename... Args>
   std::future<typename std::result_of<F(Args...)>::type>
     cudaLaunchManaged(F&& f, Args&&... args)
   {
     return getFuture([&](){
-    #ifdef __NVCC__
-      cudaConfig::ExecutionPolicy execPol;
-      checkCuda(cudaConfig::configureGrid(execPol, f));
-      f<<<execPol.getGridSize(), execPol.getBlockSize(),
-          execPol.getSharedMemBytes()>>>(args...);
+      f<<<execPol_->getGridSize(), execPol_->getBlockSize(),
+          execPol_->getSharedMemBytes()>>>(args...);
       //std::cout<<"[In task]: Launched\n";
       cudaStreamSynchronize(cudaStreamPerThread);
       //std::cout<<"[In task]: Synced\n";
-    #else
-      f(args...);
-    #endif 
     });
   }
-
+  template<typename F>
+  ThreadPoolService& configureLaunch(int totalThreads, F&& f){
+    checkCuda(cudaConfig::configure(*execPol_, std::forward<F>(f), totalThreads));
+    return *this;
+  }
+  // Manual launch configuration
+  cudaConfig::ExecutionPolicy& getExecPol(){ return *execPol_; }
+#endif 
   // Overload: differentiate between managed-nonmanaged args
   /*template<typename F, typename... NMArgs, template<typename...> class NM,
             typename... MArgs, template<typename...> class M>
@@ -160,10 +164,20 @@ private:
 	std::condition_variable condition_;
   // workers_ finalization flag
 	std::atomic_bool stop_;
+#ifdef __NVCC__
+  std::unique_ptr<cudaConfig::ExecutionPolicy> execPol_;
+#else
+  std::unique_ptr<int> execPol_;
+#endif
 };
 
 // the constructor just launches some amount of workers
-ThreadPoolService::ThreadPoolService(const edm::ParameterSet&, edm::ActivityRegistry&): stop_(false)
+ThreadPoolService::ThreadPoolService(const edm::ParameterSet&, edm::ActivityRegistry&):
+#ifdef __NVCC__
+  stop_(false), execPol_(new cudaConfig::ExecutionPolicy())
+#else
+  stop_(false), execPol_(new int)
+#endif
 {
   std::cout<<"Constructing ThreadPoolService\n";
   // TODO(ksamaras): Check num GPUs, threads_n= 4*GPUs

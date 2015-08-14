@@ -178,22 +178,23 @@ void TestThreadPoolService::CUDAAutolaunchManagedTest()
   Service<service::ThreadPoolService> pool;
   cout<<"\nStarting CUDA autolaunch (managed) test...\n";
   float *in, *out;
-  const int n= 30000, times= 10;
+  const int n= 100000000, times= 3000;
   cudaMallocManaged(&in, n*sizeof(float));  //cudaMemAttachHost?
   cudaMallocManaged(&out, n*sizeof(float));
   for(int i=0; i<n; i++) in[i]= 10*cos(3.141592/100*i);
 
   cout<<"Launching...\n";
-  pool->cudaLaunchManaged(longKernel, (int)n,(int)times,
+  pool->configureLaunch(n, longKernel).
+        cudaLaunchManaged(longKernel, (int)n,(int)times,
                           const_cast<const float*>(in),out).get();
 /*
   pool->cudaLaunchManaged(longKernel,
                           service::NonManagedArgs<int>((int)n),
                           service::ManagedArgs<>());*/
 
-  for(int i=0; i<n; i++) if (times*in[i]-out[i]>1e-2 || times*in[i]-out[i]<-1e-2){
+  for(int i=0; i<n; i++) if (times*in[i]-out[i]>5e-0 || times*in[i]-out[i]<-5e-0){
     cout<<"ERROR: i="<<i<<'\n';
-    CPPUNIT_ASSERT_DOUBLES_EQUAL(times*in[i], out[i], 1e-2);
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(times*in[i], out[i], 5e-0);
   }
   cudaFree(in);
   cudaFree(out);

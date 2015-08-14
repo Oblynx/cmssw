@@ -27,8 +27,8 @@ public:
         FullManual = GridSize | BlockSize | SharedMem
     };
 
-    ExecutionPolicy(int blockSize=0, int gridSize=0, size_t sharedMemBytes=0)
-    : mState(0) {
+    ExecutionPolicy(dim3 blockSize= {0,0,0}, dim3 gridSize= {0,0,0}, size_t sharedMemBytes=0)
+    : state_(0) {
       setGridSize(gridSize);
       setBlockSize(blockSize);
       setSharedMemBytes(sharedMemBytes);  
@@ -37,39 +37,40 @@ public:
     ExecutionPolicy& operator=(ExecutionPolicy&&) =default;
     ~ExecutionPolicy() {}
 
-    int    getConfigState()    const { return mState;          }
-    int    getGridSize()       const { return mGridSize;       }
-    int    getBlockSize()      const { return mBlockSize;      }
-    int    getMaxBlockSize()   const { return mMaxBlockSize;   }
-    size_t getSharedMemBytes() const { return mSharedMemBytes; }
+    int    getConfigState()    const { return state_;          }
+    dim3   getGridSize()       const { return gridSize_;       }
+    dim3   getBlockSize()      const { return blockSize_;      }
+    int    getMaxBlockSize()   const { return maxBlockSize_;   }
+    size_t getSharedMemBytes() const { return sharedMemBytes_; }
  
-    ExecutionPolicy& setGridSize(int arg) { 
-        mGridSize = arg;  
-        if (mGridSize > 0) mState |= GridSize; 
-        else mState &= (FullManual - GridSize);
+    ExecutionPolicy& setGridSize(const dim3 arg) { 
+        gridSize_ = arg;
+        if (gridSize_.x > 0) state_ |= GridSize; 
+        else state_ &= (FullManual - GridSize);
         return *this;
     }   
-    ExecutionPolicy& setBlockSize(int arg) { mBlockSize = arg; 
-        if (mBlockSize > 0) mState |= BlockSize; 
-        else mState &= (FullManual - BlockSize);
+    ExecutionPolicy& setBlockSize(const dim3 arg) {
+        blockSize_ = arg; 
+        if (blockSize_.x > 0) state_ |= BlockSize; 
+        else state_ &= (FullManual - BlockSize);
         return *this;
     }
-    ExecutionPolicy& setMaxBlockSize(int arg) {
-    	mMaxBlockSize = arg;
+    ExecutionPolicy& setMaxBlockSize(const int arg) {
+    	maxBlockSize_ = arg;
         return *this;
     }
-    ExecutionPolicy& setSharedMemBytes(size_t arg) { 
-        mSharedMemBytes = arg; 
-        mState |= SharedMem; 
+    ExecutionPolicy& setSharedMemBytes(const size_t arg) { 
+        sharedMemBytes_ = arg; 
+        state_ |= SharedMem; 
         return *this;
     }
 
 private:
-    int    mState;
-    int    mGridSize;
-    int    mBlockSize;
-    int    mMaxBlockSize;
-    size_t mSharedMemBytes;
+    int    state_;
+    dim3   gridSize_;
+    dim3   blockSize_;
+    int    maxBlockSize_;
+    size_t sharedMemBytes_;
 };
 
 }   // namespace cudaConfig

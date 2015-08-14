@@ -56,10 +56,10 @@ cudaError_t configure(ExecutionPolicy& p, F&& kernel, int totalThreads= 1,
     status= cudaOccupancyMaxPotentialBlockSize(&minGridSize, &suggestedBlockSize,
                                                kernel, dynamicSMemSize, blockSizeLimit);
     if (status != cudaSuccess) return status;
-    p.setBlockSize(suggestedBlockSize);
+    p.setBlockSize({suggestedBlockSize,1,1});
   }
   if ((configState & ExecutionPolicy::GridSize) == 0)
-    p.setGridSize((totalThreads+p.getBlockSize()-1)/p.getBlockSize());
+    p.setGridSize({(totalThreads+p.getBlockSize().x-1)/p.getBlockSize().x,1,1});
   /*if ((configState & ExecutionPolicy::SharedMem) == 0) {
     int smemGranularity = 0;
     cudaOccError occErr = cudaOccSMemAllocationGranularity(&smemGranularity, &occProp);

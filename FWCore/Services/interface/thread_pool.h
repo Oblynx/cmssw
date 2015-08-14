@@ -119,7 +119,7 @@ public:
     });
   }
   template<typename F>
-  cudaConfig::ExecutionPolicy configureLaunch(int totalThreads, F&& f){
+  static cudaConfig::ExecutionPolicy configureLaunch(int totalThreads, F&& f){
     cudaConfig::ExecutionPolicy execPol;
     checkCuda(cudaConfig::configure(execPol, std::forward<F>(f), totalThreads));
     return execPol;
@@ -129,7 +129,7 @@ public:
   inline std::future<typename std::result_of<F(Args...)>::type>
     cudaLaunchManaged(void*, F&& f, Args&&... args);
   template<typename F>
-  int configureLaunch(int totalThreads, F&& f);
+  static int configureLaunch(int totalThreads, F&& f);
 #endif 
   // Overload: differentiate between managed-nonmanaged args
   /*template<typename F, typename... NMArgs, template<typename...> class NM,

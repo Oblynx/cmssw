@@ -187,8 +187,8 @@ void TestThreadPoolService::CUDAAutolaunchManagedTest()
 
   cout<<"Launching auto...\n";
   // Auto launch config
-  pool->configureLaunch(n, longKernel).
-        cudaLaunchManaged(longKernel, (int)n,(int)times,
+  cudaConfig::ExecutionPolicy execPol(pool->configureLaunch(n, longKernel));
+  pool->cudaLaunchManaged(execPol, longKernel, (int)n,(int)times,
                           const_cast<const float*>(in),out).get();
   for(int i=0; i<n; i++) if (times*in[i]-out[i]>TOLERANCE || times*in[i]-out[i]<-TOLERANCE){
     cout<<"ERROR: i="<<i<<'\n';
@@ -197,9 +197,8 @@ void TestThreadPoolService::CUDAAutolaunchManagedTest()
 
   cout<<"Launching manual...\n";
   // Manual launch config
-  pool->getExecPolicy().setBlockSize(32*12).
-                        setGridSize((n-1+32*12)/(32*12));
-  pool->cudaLaunchManaged(longKernel, (int)n,(int)times,
+  execPol= cudaConfig::ExecutionPolicy(320, (n-1+320)/320);
+  pool->cudaLaunchManaged(execPol, longKernel, (int)n,(int)times,
                           const_cast<const float*>(in),out).get();
   for(int i=0; i<n; i++) if (times*in[i]-out[i]>TOLERANCE || times*in[i]-out[i]<-TOLERANCE){
     cout<<"ERROR: i="<<i<<'\n';

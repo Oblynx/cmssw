@@ -27,17 +27,17 @@ public:
         FullManual = GridSize | BlockSize | SharedMem
     };
 
-    ExecutionPolicy(int gridSize=0, int blockSize=0, size_t sharedMemBytes=0)
+    ExecutionPolicy(int blockSize=0, int gridSize=0, size_t sharedMemBytes=0)
     : mState(0) {
       setGridSize(gridSize);
       setBlockSize(blockSize);
       setSharedMemBytes(sharedMemBytes);  
     }
-          
+    ExecutionPolicy(ExecutionPolicy&&) =default;
+    ExecutionPolicy& operator=(ExecutionPolicy&&) =default;
     ~ExecutionPolicy() {}
 
     int    getConfigState()    const { return mState;          }
-    
     int    getGridSize()       const { return mGridSize;       }
     int    getBlockSize()      const { return mBlockSize;      }
     int    getMaxBlockSize()   const { return mMaxBlockSize;   }

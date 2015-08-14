@@ -35,33 +35,39 @@ Editor: Konstantinos Samaras-Tsakiris, kisamara@auth.gr
 #include <functional>
 #include <stdexcept>
 
-//#include <cuda_runtime_api.h>
-#include <cuda_runtime.h>
+#ifdef __NVCC__
+#include "cuda_utils/cuda_launch_configuration.h"
+#endif
 
 #include "FWCore/ParameterSet/interface/ConfigurationDescriptions.h"
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
 #include "FWCore/ServiceRegistry/interface/ActivityRegistry.h"
 
-struct TestDefinitionsLink{
-  TestDefinitionsLink(): a(0) {}
-  int a;
-  void doIt();
-  template<class T> void tDoIt(T& t);
-};
-
-void TestDefinitionsLink::doIt(){
-  a= 1;
-}
-template<class T>
-void TestDefinitionsLink::tDoIt(T& t){
-  t.a= a;
-}
-
 namespace edm{
+
 class ParameterSet;
 class ActivityRegistry;
 class ConfigurationDescriptions;
+
 namespace service{
+
+template<int ...> struct Seq {};
+template<int N, int ...S> struct GenSeq: GenSeq<N-1, N-1, S...> { };
+template<int ...S> struct GenSeq<0, S...> {
+  typedef Seq<S...> type;
+};
+template<typename... Args> struct KernelArgs{
+  KernelArgs(Args&&... args): args_(std::forward<Args>(args)...) {}
+  std::tuple<Args...> args_;
+};
+template<typename... Args> struct ManagedArgs: KernelArgs<Args...>{
+  ManagedArgs(Args&&... args): KernelArgs<Args...>(std::forward<Args>(args)...)
+  {}
+};
+template<typename... Args> struct NonManagedArgs: KernelArgs<Args...>{
+  NonManagedArgs(Args&&... args): KernelArgs<Args...>(std::forward<Args>(args)...)
+  {}
+};
 
 // std::thread pool for resources recycling
 class ThreadPoolService {
@@ -95,33 +101,18 @@ public:
     this->condition_.notify_one();
     return resultFut;
   }
-/*
-  class cudaTask{
-  public:
-    template<typename... Args>
-    void operator()(void (*f)(Args...), Args... args){
-    #ifdef __NVCC__
-      std::cout<<"[In task]...\n";
-      f<<<10,10>>>(args...);
-      std::cout<<"[In task]: Launched\n";
-      cudaStreamSynchronize(cudaStreamPerThread);
-      std::cout<<"[In task]: Synced\n";
-    #else
-      f(args...);
-    #endif
-    }
-  };
-*/
-  // Launch __global__ kernel function with explicit configuration
-  template <typename F, typename... Args>
+
+  // Launch kernel function with args
+  template<typename F, typename... Args>
   std::future<typename std::result_of<F(Args...)>::type>
     cudaLaunchManaged(F&& f, Args&&... args)
   {
-    //return getFuture(cudaTask, f, args...);
     return getFuture([&](){
     #ifdef __NVCC__
-      //std::cout<<"[In task]...\n";
-      f<<<10,10>>>(args...);
+      cudaConfig::ExecutionPolicy execPol;
+      checkCuda(cudaConfig::configureGrid(execPol, f));
+      f<<<execPol.getGridSize(), execPol.getBlockSize(),
+          execPol.getSharedMemBytes()>>>(args...);
       //std::cout<<"[In task]: Launched\n";
       cudaStreamSynchronize(cudaStreamPerThread);
       //std::cout<<"[In task]: Synced\n";
@@ -131,6 +122,21 @@ public:
     });
   }
 
+  // Overload: differentiate between managed-nonmanaged args
+  /*template<typename F, typename... NMArgs, template<typename...> class NM,
+            typename... MArgs, template<typename...> class M>
+  typename std::enable_if<std::is_same<NM<NMArgs...>,NonManagedArgs<NMArgs...>>::value
+                          && std::is_same<M<MArgs...>,ManagedArgs<MArgs...>>::value,
+                          std::future<typename std::result_of<F(void)>>>::type
+      cudaLaunchManaged(F&& f, NM<NMArgs...>&& nonManaged, M<MArgs...>&& managed)
+  {
+    std::cout<<"Separate managed-unmanaged args!";
+    //return cudaLaunchManaged(std::forward<F>(f), nonManaged.forward(), managed.forward());
+    return unpackArgsTuple(typename GenSeq<sizeof...(NMArgs)+
+                          sizeof...(MArgs)>::type(), std::forward<F>(f), 
+                          merge(nonManaged,managed));
+  }*/
+
   // the destructor joins all threads
 	virtual ~ThreadPoolService(){
     this->stop_ = true;
@@ -138,8 +144,12 @@ public:
     for(std::thread& worker : this->workers_)
       worker.join();
   }
-
 private:
+  /*template<int... S, typename F, typename... NMArgs, template<typename...> class NM,
+                                 typename... MArgs, template<typename...> class M>
+  void unpackArgsTuple(Seq<S...>, F&& f, NM<NMArgs...>&& nonMan, M<MArgs...>&& man){
+
+  }*/
   // need to keep track of threads so we can join them
 	std::vector< std::thread > workers_;
   // the task queue

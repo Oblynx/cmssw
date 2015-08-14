@@ -23,6 +23,9 @@
 #include "cppunit/extensions/HelperMacros.h"
 #include "Utilities/Testing/interface/CppUnit_testdriver.icpp"
 
+using namespace std;
+using namespace edm;
+
 class TestThreadPoolService: public CppUnit::TestFixture {
   CPPUNIT_TEST_SUITE(TestThreadPoolService);
   CPPUNIT_TEST(basicUseTest);
@@ -32,7 +35,7 @@ class TestThreadPoolService: public CppUnit::TestFixture {
   CPPUNIT_TEST_SUITE_END();
 public:
   void setUp();
-  void tearDown() {std::cout<<"\n";}
+  void tearDown() {cout<<"\n";}
   void basicUseTest();
   //!< @brief Test behaviour if the task itself enqueues another task in same pool
   void passServiceArgTest();
@@ -45,13 +48,13 @@ private:
   void go();
   void cudaTask(int n, int i, const float* din, int times);
   //--$--//
-  std::mutex mtx;
-  std::condition_variable cv;
+  mutex mtx;
+  condition_variable cv;
   bool ready= false;
   long sum= 0;
   const int BLOCK_SIZE= 32;
-  edm::ServiceToken serviceToken;
-  const std::string serviceConfig= 
+  ServiceToken serviceToken;
+  const string serviceConfig= 
       "import FWCore.ParameterSet.Config as cms\n"
       "process = cms.Process('testThreadPoolService')\n"
       "process.ThreadPoolService = cms.Service('ThreadPoolService')\n";
@@ -71,7 +74,7 @@ __global__ void longKernel(const int n, const int times, const float* in, float*
   }
 }
 void TestThreadPoolService::setUp(){
-  static std::atomic_flag notFirstTime= ATOMIC_FLAG_INIT;
+  static atomic_flag notFirstTime= ATOMIC_FLAG_INIT;
   if (!notFirstTime.test_and_set()){
     // Init modelled after "FWCore/Catalog/test/FileLocator_t.cpp"
     // Make the services.
@@ -80,14 +83,14 @@ void TestThreadPoolService::setUp(){
   serviceToken= edm::ServiceRegistry::createServicesFromConfig(serviceConfig);
 }
 void TestThreadPoolService::print_id(int id) {
-  std::unique_lock<std::mutex> lck(mtx);
+  unique_lock<mutex> lck(mtx);
   while (!ready) cv.wait(lck);
   // ...
-  std::cout << id << "\t";
+  cout << id << "\t";
   sum+= id;
 }
 void TestThreadPoolService::go() {
-  std::unique_lock<std::mutex> lck(mtx);
+  unique_lock<mutex> lck(mtx);
   ready = true;
   cv.notify_all();
 }
@@ -100,20 +103,20 @@ void TestThreadPoolService::cudaTask(int n, int i, const float* din, int times){
   cudaStreamSynchronize(cudaStreamPerThread);
   float out;
   cudaMemcpy(&out, dout+i, 1*sizeof(float), cudaMemcpyDeviceToHost);
-  std::cout << "GPU::" << out << "\t";
+  cout << "GPU::" << out << "\t";
   cudaFree(dout);
 }
 
 void TestThreadPoolService::basicUseTest()
 {
   //make the services available
-  edm::ServiceRegistry::Operate operate(serviceToken);
-  edm::Service<edm::service::ThreadPoolService> pool;
-  std::cout<<"\nStarting basic test...\n";
-  pool->getFuture([]() {std::cout<<"Empty task\n";}).get();
+  ServiceRegistry::Operate operate(serviceToken);
+  Service<service::ThreadPoolService> pool;
+  cout<<"\nStarting basic test...\n";
+  pool->getFuture([]() {cout<<"Empty task\n";}).get();
 
-  std::cout<<"[ThreadPoolService::basicUseTest] Service initialized\n";
-  std::vector<std::future<void>> futures;
+  cout<<"[ThreadPoolService::basicUseTest] Service initialized\n";
+  vector<future<void>> futures;
   const int N= 30;
 
   // spawn N threads:
@@ -122,7 +125,7 @@ void TestThreadPoolService::basicUseTest()
   go();
 
   for (auto& future: futures) future.get();
-  std::cout << "\n[ThreadPoolService::basicUseTest] DONE, sum= "<<sum<<"\n";
+  cout << "\n[ThreadPoolService::basicUseTest] DONE, sum= "<<sum<<"\n";
 	for(int i=0; i<N; i++)
 		sum-= i+1;
   CPPUNIT_ASSERT_EQUAL(sum, 0l);
@@ -130,27 +133,27 @@ void TestThreadPoolService::basicUseTest()
 void TestThreadPoolService::passServiceArgTest()
 {
   //make the services available
-  edm::ServiceRegistry::Operate operate(serviceToken);
-  edm::Service<edm::service::ThreadPoolService> pool;
-  std::cout<<"\nStarting passServiceArg test...\n";
+  ServiceRegistry::Operate operate(serviceToken);
+  Service<service::ThreadPoolService> pool;
+  cout<<"\nStarting passServiceArg test...\n";
   pool->getFuture([&]() {
-    std::cout<<"Recursive enqueue #1\n";
-    edm::ServiceRegistry::Operate operate(serviceToken);
-    pool->getFuture([]() {std::cout<<"Pool service captured\n";}).get();
+    cout<<"Recursive enqueue #1\n";
+    ServiceRegistry::Operate operate(serviceToken);
+    pool->getFuture([]() {cout<<"Pool service captured\n";}).get();
   }).get();
-  pool->getFuture([this](edm::Service<edm::service::ThreadPoolService> poolArg){
-    std::cout<<"Recursive enqueue #2\n";
-    edm::ServiceRegistry::Operate operate(serviceToken);
-    poolArg->getFuture([]() {std::cout<<"Pool service passed as arg\n";}).get();
+  pool->getFuture([this](Service<service::ThreadPoolService> poolArg){
+    cout<<"Recursive enqueue #2\n";
+    ServiceRegistry::Operate operate(serviceToken);
+    poolArg->getFuture([]() {cout<<"Pool service passed as arg\n";}).get();
   }, pool).get();
 }
 void TestThreadPoolService::CUDATest()
 {
   //make the services available
-  edm::ServiceRegistry::Operate operate(serviceToken);
-  edm::Service<edm::service::ThreadPoolService> pool;
-  std::cout<<"\nStarting CUDA test...\n";
-  std::vector<std::future<void>> futures;
+  ServiceRegistry::Operate operate(serviceToken);
+  Service<service::ThreadPoolService> pool;
+  cout<<"\nStarting CUDA test...\n";
+  vector<future<void>> futures;
   const int N= 30;
 
   float *in, *din;
@@ -171,20 +174,27 @@ void TestThreadPoolService::CUDATest()
 void TestThreadPoolService::CUDAAutolaunchManagedTest()
 {
   //make the services available
-  edm::ServiceRegistry::Operate operate(serviceToken);
-  edm::Service<edm::service::ThreadPoolService> pool;
-  std::cout<<"\nStarting CUDA autolaunch (managed) test...\n";
+  ServiceRegistry::Operate operate(serviceToken);
+  Service<service::ThreadPoolService> pool;
+  cout<<"\nStarting CUDA autolaunch (managed) test...\n";
   float *in, *out;
-  const int n= 50, times= 1;
+  const int n= 30000, times= 10;
   cudaMallocManaged(&in, n*sizeof(float));  //cudaMemAttachHost?
   cudaMallocManaged(&out, n*sizeof(float));
   for(int i=0; i<n; i++) in[i]= 10*cos(3.141592/100*i);
 
-  std::cout<<"Launching...\n";
+  cout<<"Launching...\n";
   pool->cudaLaunchManaged(longKernel, (int)n,(int)times,
                           const_cast<const float*>(in),out).get();
+/*
+  pool->cudaLaunchManaged(longKernel,
+                          service::NonManagedArgs<int>((int)n),
+                          service::ManagedArgs<>());*/
 
-  for(int i=0; i<n; i++) CPPUNIT_ASSERT_EQUAL(times*in[i], out[i]);
+  for(int i=0; i<n; i++) if (times*in[i]-out[i]>1e-2 || times*in[i]-out[i]<-1e-2){
+    cout<<"ERROR: i="<<i<<'\n';
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(times*in[i], out[i], 1e-2);
+  }
   cudaFree(in);
   cudaFree(out);
 }

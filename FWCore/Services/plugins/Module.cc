@@ -2,7 +2,7 @@
 
 #include "FWCore/Services/src/SiteLocalConfigService.h"
 #include "FWCore/Services/src/Tracer.h"
-#include "FWCore/Services/interface/thread_pool.h"
+#include "FWCore/Services/interface/thread_pool_TBBQueueBlocking.h"
 #include "FWCore/Services/src/InitRootHandlers.h"
 #include "FWCore/Services/src/UnixSignalService.h"
 

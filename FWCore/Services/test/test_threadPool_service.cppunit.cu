@@ -1,5 +1,5 @@
 // Service to test
-#include "FWCore/Services/interface/thread_pool.h"
+#include "FWCore/Services/interface/thread_pool_TBBQueueBlocking.h"
 
 // std
 #include <iostream>
@@ -8,6 +8,8 @@
 #include <mutex>
 #include <atomic>
 #include <condition_variable>
+
+#include <algorithm>
 
 #include <thread>
 #include <chrono>
@@ -32,6 +34,7 @@ class TestThreadPoolService: public CppUnit::TestFixture {
   CPPUNIT_TEST(passServiceArgTest);
   CPPUNIT_TEST(CUDATest);
   CPPUNIT_TEST(CUDAAutolaunchManagedTest);
+  CPPUNIT_TEST(timeBenchmark);
   CPPUNIT_TEST_SUITE_END();
 public:
   void setUp();
@@ -43,6 +46,7 @@ public:
   void CUDATest();
   //!< @brief Test auto launch cuda kernel with its arguments in managed memory
   void CUDAAutolaunchManagedTest();
+  void timeBenchmark();
 private:
   void print_id(int id);
   void go();
@@ -135,7 +139,8 @@ void TestThreadPoolService::passServiceArgTest()
   //make the services available
   ServiceRegistry::Operate operate(serviceToken);
   Service<service::ThreadPoolService> pool;
-  cout<<"\nStarting passServiceArg test...\n";
+  cout<<"\nStarting passServiceArg test...\n"
+      <<"(requires >1 thread, otherwise will never finish)\n";
   pool->getFuture([&]() {
     cout<<"Recursive enqueue #1\n";
     ServiceRegistry::Operate operate(serviceToken);
@@ -211,4 +216,37 @@ void TestThreadPoolService::CUDAAutolaunchManagedTest()
 
   cudaFree(in);
   cudaFree(out);
+}
+
+void TestThreadPoolService::timeBenchmark()
+{
+  //make the services available
+  ServiceRegistry::Operate operate(serviceToken);
+  Service<service::ThreadPoolService> pool;
+
+  cout << "Starting quick time benchmark...\n";
+  long N= 100000;
+  auto start= chrono::steady_clock::now();
+  auto end = start;
+  auto diff= start-start;
+  future<void> fut;
+  long dummy= 1;
+
+  vector<future<void>> futVec;
+  diff= start-start;
+  for (int i = 0; i <= N; ++i)
+  {
+    start = chrono::steady_clock::now();
+    /*futVec.push_back(pool->getFuture([&f] (){
+    }));*/
+    pool->getFuture([] (){
+      cout << "";
+    }).get();
+    end = chrono::steady_clock::now();
+    diff += (i>0)? end-start: start-start;
+  }
+  cout << "Vec ThreadPoolService: "<< chrono::duration <double, nano> (diff).count()/N << " ns" << endl;
+  /*for_each(futVec.begin(), futVec.end(), [] (future<void>& elt) {
+    elt.get();
+  });*/
 }

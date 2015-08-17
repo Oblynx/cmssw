@@ -45,11 +45,6 @@ Editor: Konstantinos Samaras-Tsakiris, kisamara@auth.gr
 #include "FWCore/ServiceRegistry/interface/ActivityRegistry.h"
 
 namespace edm{
-
-class ParameterSet;
-class ActivityRegistry;
-class ConfigurationDescriptions;
-
 namespace service{
 
 template<int ...> struct Seq {};
@@ -169,6 +164,7 @@ private:
 	std::condition_variable condition_;
   // workers_ finalization flag
 	std::atomic_bool stop_;
+  bool cuda_;
 };
 
 // the constructor just launches some amount of workers
@@ -177,6 +173,17 @@ ThreadPoolService::ThreadPoolService(const edm::ParameterSet&, edm::ActivityRegi
 {
   std::cout<<"Constructing ThreadPoolService\n";
   // TODO(ksamaras): Check num GPUs, threads_n= 4*GPUs
+  /**Checking presence of GPU**/
+  int deviceCount = 0;
+#ifdef __NVCC__
+  cudaError_t error_id = cudaGetDeviceCount(&deviceCount);
+  if (error_id == cudaErrorNoDevice || deviceCount == 0){
+    std::cout<<"No device available!\n";
+    cuda_= false;
+  } else cuda_= true;
+#endif
+  //size_t threads_n = 4*deviceCount;
+  if (deviceCount==0) return;
   size_t threads_n = std::thread::hardware_concurrency();
   if(!threads_n)
     throw std::invalid_argument("more than zero threads expected");

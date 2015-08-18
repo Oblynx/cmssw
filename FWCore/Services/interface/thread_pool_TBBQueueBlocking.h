@@ -137,7 +137,9 @@ public:
                           sizeof...(MArgs)>::type(), std::forward<F>(f), 
                           merge(nonManaged,managed));
   }*/
-
+  
+  // Clears tasks queue
+  void clearTasks(){ tasks_.clear(); }
   // the destructor joins all threads
 	virtual ~ThreadPoolService(){
     std::cout << "---| Destroying service |---\n";

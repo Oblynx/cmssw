@@ -182,7 +182,7 @@ ThreadPoolService::ThreadPoolService(const edm::ParameterSet&, edm::ActivityRegi
   } else cuda_= true;
 #endif
   //size_t threads_n = 4*deviceCount;
-  if (deviceCount==0) return;
+            /*DEBUG*/ if (deviceCount==0) return;
   size_t threads_n = std::thread::hardware_concurrency();
   if(!threads_n)
     throw std::invalid_argument("more than zero threads expected");

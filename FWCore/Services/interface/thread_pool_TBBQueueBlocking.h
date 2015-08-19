@@ -1,4 +1,8 @@
-/**
+/*
+CMSSW CUDA management and thread pool Service
+Author: Konstantinos Samaras-Tsakiris, kisamara@auth.gr
+*//*
+  --> Thread Pool:
 Copyright (c) 2012 Jakob Progsch, Václav Zeman
 This software is provided 'as-is', without any express or implied
 warranty. In no event will the authors be held liable for any damages
@@ -16,7 +20,6 @@ freely, subject to the following restrictions:
    distribution.
 
 --> This is an altered version of the original code.
-Editor: Konstantinos Samaras-Tsakiris, kisamara@auth.gr
 */
 
 #ifndef Thread_Pool_Service_H
@@ -81,34 +84,42 @@ public:
   // Launch kernel function with args
   // Configure execution policy before launch!
   template<typename F, typename... Args>
-  inline std::future<typename std::result_of<F(Args...)>::type>
+  inline std::future<void>
     cudaLaunchManaged(const cudaConfig::ExecutionPolicy& execPol, F&& f, Args&&... args)
   {
-    return getFuture([&](){
-#ifdef __NVCC__
-      f<<<execPol.getGridSize(), execPol.getBlockSize(),
-          execPol.getSharedMemBytes()>>>(args...);
-#endif
-      //std::cout<<"[In task]: Launched\n";
-      cudaStreamSynchronize(cudaStreamPerThread);
-      //std::cout<<"[In task]: Synced\n";
-    });
+    using packaged_task_t = std::packaged_task<void()>;
+
+    std::shared_ptr<packaged_task_t> task(new packaged_task_t([&](){
+      #ifdef __NVCC__
+        f<<<execPol.getGridSize(), execPol.getBlockSize(),
+            execPol.getSharedMemBytes()>>>(
+                                              std::forward<Args>(args)...);
+      #endif
+        //std::cout<<"[In task]: Launched\n";
+        cudaStreamSynchronize(cudaStreamPerThread);
+        //std::cout<<"[In task]: Synced\n";
+    }));
+    std::future<void> resultFut = task->get_future();
+    tasks_.emplace([task](){ (*task)(); });
+    return resultFut;
   }
-  // Overload: differentiate between managed-nonmanaged args
-  template<typename F, typename... NMArgs, template<typename...> class NM,
-            typename... MArgs, template<typename...> class M>
-  typename std::enable_if<std::is_same<NM<NMArgs...>,utils::NonManagedArgs<NMArgs...>>::value
-                          && std::is_same<M<MArgs...>,utils::ManagedArgs<MArgs...>>::value,
-                          std::future<typename std::result_of<F(void)>>>::type
-    cudaLaunchManaged(const cudaConfig::ExecutionPolicy& execPol,
-                      F&& f, NM<NMArgs...>&& nonManaged, M<MArgs...>&& managed)
-  ;/*{
-    std::cout<<"Separate managed-unmanaged args!\n";
-    //return cudaLaunchManaged(std::forward<F>(f), nonManaged.forward(), managed.forward());
-    return unpackArgsTuple(typename GenSeq<sizeof...(NMArgs)+
-                          sizeof...(MArgs)>::type(), std::forward<F>(f), 
-                          merge(nonManaged,managed));
-  }*/
+
+  /*template<typename T>
+  ??? attachManagedMemory(T&& arg)
+  {
+    IFcudaPointer(std::forward<Head>(first));
+    *//*struct CudaPtrArg{
+      void operate(){
+
+      }
+    };
+    struct NonCudaPtrArg{
+      void operate(){}
+    };
+    std::conditional<std::is_same<Head, cudaPointer>, CudaPtrArg, NonCudaPtrArg>::
+      type::operate(std::forward<Head>(first));*/
+  //}
+
   template<typename F>
   static cudaConfig::ExecutionPolicy configureLaunch(int totalThreads, F&& f){
     cudaConfig::ExecutionPolicy execPol;
@@ -126,11 +137,18 @@ public:
   //!< @brief Joins all threads
   void stopWorkers();
 private:
-  /*template<int... S, typename F, typename... NMArgs, template<typename...> class NM,
-                                 typename... MArgs, template<typename...> class M>
-  void unpackArgsTuple(Seq<S...>, F&& f, NM<NMArgs...>&& nonMan, M<MArgs...>&& man){
-
-  }*/
+  template<typename T, typename std::enable_if<std::is_base_of<cudaPtrBase, T>::value>::type>
+  auto preprocessManagedMem(T&& cudaPtr) -> decltype(cudaPtr.p){
+    std::cout<<"[memAttach]: Managed arg!\n";
+    cudaPtr.attachStream();
+    return cudaPtr.p;
+  }
+  template<typename T, typename std::enable_if<!std::is_base_of<cudaPtrBase, T>::value>::type>
+  auto preprocessManagedMem(T&& valueArg) -> decltype(valueArg){
+    //Do nothing
+    std::cout<<"[memAttach]: value arg\n";
+    return valueArg;
+  }
   // need to keep track of threads so we can join them
 	std::vector< std::thread > workers_;
   // the task concurrent queue

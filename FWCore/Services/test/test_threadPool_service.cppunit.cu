@@ -241,8 +241,7 @@ void TestThreadPoolService::CUDAAutolaunchCUDAPTRTest()
   cout<<"Launching auto...\n";
   // Auto launch config
   cudaConfig::ExecutionPolicy execPol((*poolPtr)->configureLaunch(n, longKernel));
-  (*poolPtr)->cudaLaunchManaged(execPol, longKernel, (int)n,(int)times,
-                          const_cast<const float*>(in.p),out.p).get();
+  (*poolPtr)->cudaLaunchManaged(execPol, longKernel, (int)n,(int)times, in,out).get();
   for(int i=0; i<n; i++) if (times*in.p[i]-out.p[i]>TOLERANCE || times*in.p[i]-out.p[i]<-TOLERANCE){
     cout<<"ERROR: i="<<i<<'\n';
     CPPUNIT_ASSERT_DOUBLES_EQUAL(times*in.p[i], out.p[i], TOLERANCE);
@@ -251,8 +250,7 @@ void TestThreadPoolService::CUDAAutolaunchCUDAPTRTest()
   cout<<"Launching manual...\n";
   // Manual launch config
   execPol= cudaConfig::ExecutionPolicy(320, (n-1+320)/320);
-  (*poolPtr)->cudaLaunchManaged(execPol, longKernel, (int)n,(int)times,
-                          const_cast<const float*>(in.p),out.p).get();
+  (*poolPtr)->cudaLaunchManaged(execPol, longKernel, (int)n,(int)times, in,out).get();
   for(int i=0; i<n; i++) if (times*in.p[i]-out.p[i]>TOLERANCE || times*in.p[i]-out.p[i]<-TOLERANCE){
     cout<<"ERROR: i="<<i<<'\n';
     CPPUNIT_ASSERT_DOUBLES_EQUAL(times*in.p[i], out.p[i], TOLERANCE);

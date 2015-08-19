@@ -39,7 +39,7 @@ class TestThreadPoolService: public CppUnit::TestFixture {
 public:
   void setUp();
   void tearDown() {
-    (*poolPtr)->clearTasks();
+    //(*poolPtr)->clearTasks();
     cout<<"\n";
   }
   void basicUseTest();
@@ -94,6 +94,8 @@ void TestThreadPoolService::setUp(){
         new ServiceRegistry::Operate(edm::ServiceRegistry::createSet(vec)));
     poolPtr= unique_ptr<Service<service::ThreadPoolService>>(
         new Service<service::ThreadPoolService>);
+    //(*poolPtr)->startWorkers();
+    cout<<"[ThreadPoolServiceTest::init] Service initialized\n";
   }
 }
 void TestThreadPoolService::print_id(int id) {
@@ -124,11 +126,7 @@ void TestThreadPoolService::cudaTask(int n, int i, const float* din, int times){
 void TestThreadPoolService::basicUseTest()
 {
   cout<<"\nStarting basic test...\n";
-  //make the services available
-  //ServiceRegistry::Operate operate(serviceToken);
   (*poolPtr)->getFuture([]() {cout<<"Empty task\n";}).get();
-
-  cout<<"[ThreadPoolService::basicUseTest] Service initialized\n";
   vector<future<void>> futures;
   const int N= 30;
 
@@ -138,7 +136,7 @@ void TestThreadPoolService::basicUseTest()
   go();
 
   for (auto& future: futures) future.get();
-  cout << "\n[ThreadPoolService::basicUseTest] DONE, sum= "<<sum<<"\n";
+  cout << "\n[basicUseTest] DONE, sum= "<<sum<<"\n";
 	for(int i=0; i<N; i++)
 		sum-= i+1;
   CPPUNIT_ASSERT_EQUAL(sum, 0l);
@@ -147,9 +145,6 @@ void TestThreadPoolService::passServiceArgTest()
 {
   cout<<"\nStarting passServiceArg test...\n"
       <<"(requires >1 thread, otherwise will never finish)\n";
-  //make the services available
-  //ServiceRegistry::Operate operate(serviceToken);
-  //Service<service::ThreadPoolService> pool= *poolPtr;
   (*poolPtr)->getFuture([&]() {
     cout<<"Recursive enqueue #1\n";
     //ServiceRegistry::Operate operate(serviceToken);
@@ -163,9 +158,6 @@ void TestThreadPoolService::passServiceArgTest()
 }
 void TestThreadPoolService::CUDATest()
 {
-  //make the services available
-  //ServiceRegistry::Operate operate(serviceToken);
-  //Service<service::ThreadPoolService> pool;
   cout<<"\nStarting CUDA test...\n";
   vector<future<void>> futures;
   const int N= 30;
@@ -189,9 +181,6 @@ void TestThreadPoolService::CUDATest()
 #define TOLERANCE 5e-1
 void TestThreadPoolService::CUDAAutolaunchManagedTest()
 {
-  //make the services available
-  //ServiceRegistry::Operate operate(serviceToken);
-  //Service<service::ThreadPoolService> pool;
   cout<<"\nStarting CUDA autolaunch (managed) test...\n";
   float *in, *out;
   const int n= 10000000, times= 1000;
@@ -225,33 +214,29 @@ void TestThreadPoolService::CUDAAutolaunchManagedTest()
 
 void TestThreadPoolService::timeBenchmark()
 {
-  //make the services available
-  //ServiceRegistry::Operate operate(serviceToken);
-  //Service<service::ThreadPoolService> pool;
-
   cout << "Starting quick time benchmark...\n";
-  long N= 100000;
+  long N= 10000000;
   auto start= chrono::steady_clock::now();
   auto end = start;
   auto diff= start-start;
   future<void> fut;
-  long dummy= 1;
+  int threadN= std::thread::hardware_concurrency();
 
-  vector<future<void>> futVec;
+  vector<future<void>> futVec(threadN);
   diff= start-start;
-  for (int i = 0; i <= N; ++i)
+  for (int i = 0; i <= N/threadN; ++i)
   {
     start = chrono::steady_clock::now();
-    //futVec.push_back((*poolPtr)->getFuture([&f] (){
-    //}));
-    (*poolPtr)->getFuture([] (){
-      cout << "";
-    }).get();
+    for(register int thr=0; thr<threadN; thr++)
+      futVec[thr]= (*poolPtr)->getFuture([] (){
+        this_thread::sleep_for(chrono::microseconds(1));
+      });
+    for_each(futVec.begin(), futVec.end(), [] (future<void>& elt) {
+      elt.get();
+    });
     end = chrono::steady_clock::now();
+
     diff += (i>0)? end-start: start-start;
   }
-  cout << "Vec ThreadPoolService: "<< chrono::duration <double, nano> (diff).count()/N << " ns" << endl;
-  //for_each(futVec.begin(), futVec.end(), [] (future<void>& elt) {
-  //  elt.get();
-  //});
+  cout << "ThreadPoolService normal operation: "<< chrono::duration <double, nano> (diff).count()/N << " ns" << endl;
 }

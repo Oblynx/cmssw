@@ -14,7 +14,6 @@ freely, subject to the following restrictions:
    misrepresented as being the original software.
    3. This notice may not be removed or altered from any source
    distribution.
-
 --> This is an altered version of the original code.
 Editor: Konstantinos Samaras-Tsakiris, kisamara@auth.gr
 */
@@ -72,17 +71,17 @@ public:
   // the constructor just launches some amount of workers
   ThreadPoolService(const edm::ParameterSet&, edm::ActivityRegistry&);
   // deleted copy&move ctors&assignments
-	ThreadPoolService(const ThreadPoolService&) = delete;
-	ThreadPoolService& operator=(const ThreadPoolService&) = delete;
-	ThreadPoolService(ThreadPoolService&&) = delete;
-	ThreadPoolService& operator=(ThreadPoolService&&) = delete;
+  ThreadPoolService(const ThreadPoolService&) = delete;
+  ThreadPoolService& operator=(const ThreadPoolService&) = delete;
+  ThreadPoolService(ThreadPoolService&&) = delete;
+  ThreadPoolService& operator=(ThreadPoolService&&) = delete;
   static void fillDescriptions(edm::ConfigurationDescriptions& descr){
     descr.add("ThreadPoolService", edm::ParameterSetDescription());
   }
 
   // Schedule task and get its future handle
   template<typename F, typename... Args>
-	inline std::future<typename std::result_of<F(Args...)>::type>
+  inline std::future<typename std::result_of<F(Args...)>::type>
     getFuture(F&& f, Args&&... args)
   {
     using packaged_task_t = std::packaged_task<typename std::result_of<F(Args...)>::type ()>;
@@ -141,7 +140,7 @@ public:
   }*/
 
   // the destructor joins all threads
-	virtual ~ThreadPoolService(){
+  virtual ~ThreadPoolService(){
     std::cout << "---| Destroying service |---\n";
     stop_= true;
     this->condition_.notify_all();
@@ -152,18 +151,17 @@ private:
   /*template<int... S, typename F, typename... NMArgs, template<typename...> class NM,
                                  typename... MArgs, template<typename...> class M>
   void unpackArgsTuple(Seq<S...>, F&& f, NM<NMArgs...>&& nonMan, M<MArgs...>&& man){
-
   }*/
   // need to keep track of threads so we can join them
-	std::vector< std::thread > workers_;
+  std::vector< std::thread > workers_;
   // the task concurrent queue
-	tbb::concurrent_queue< std::function<void()> > tasks_;
+  tbb::concurrent_queue< std::function<void()> > tasks_;
 
   std::mutex signalMutex_;
   std::condition_variable condition_;
   // workers_ finalization flag
   std::atomic_bool stop_;
-	bool cuda_;
+  bool cuda_;
 };
 
 // the constructor just launches some amount of workers

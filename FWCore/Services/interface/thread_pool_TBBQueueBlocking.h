@@ -65,11 +65,13 @@ template<typename... Args> struct NonManagedArgs: KernelArgs<Args...>{
   {}
 };
 
-// std::thread pool for resources recycling
+/* Why not a singleton:
+http://jalf.dk/blog/2010/03/singletons-solving-problems-you-didnt-know-you-never-had-since-1995/
+*/
 class ThreadPoolService {
 public:
-  // the constructor just launches some amount of workers
-  ThreadPoolService(const edm::ParameterSet&, edm::ActivityRegistry&);
+  //!< Checks CUDA and registers callbacks
+  ThreadPoolService(const edm::ParameterSet&, edm::ActivityRegistry& actR);
   // deleted copy&move ctors&assignments
 	ThreadPoolService(const ThreadPoolService&) = delete;
 	ThreadPoolService& operator=(const ThreadPoolService&) = delete;
@@ -140,14 +142,14 @@ public:
   
   // Clears tasks queue
   void clearTasks(){ tasks_.clear(); }
-  // the destructor joins all threads
 	virtual ~ThreadPoolService(){
     std::cout << "---| Destroying service |---\n";
-    stop_= true;
-    tasks_.abort();
-    for(std::thread& worker : workers_)
-      worker.join();
+    stopWorkers();
   }
+  //!< @brief Constructs workers
+  void startWorkers();
+  //!< @brief Joins all threads
+  void stopWorkers();
 private:
   /*template<int... S, typename F, typename... NMArgs, template<typename...> class NM,
                                  typename... MArgs, template<typename...> class M>
@@ -161,15 +163,17 @@ private:
 
   // workers_ finalization flag
   std::atomic_bool stop_;
-	bool cuda_;
+  std::atomic_flag beginworking_;   //init: false
+  std::atomic_flag endworking_;    //init: true
+  // {F,T}: not working, {T,T}: transition, {T,F}: working
+  std::atomic_bool cuda_;
 };
 
-// the constructor just launches some amount of workers
-ThreadPoolService::ThreadPoolService(const edm::ParameterSet&, edm::ActivityRegistry&):
-  stop_(false)
+ThreadPoolService::ThreadPoolService(const edm::ParameterSet&, edm::ActivityRegistry& actR):
+  stop_(false), cuda_(false)
 {
+  beginworking_.clear(); endworking_.test_and_set();
   std::cout<<"Constructing ThreadPoolService\n";
-  // TODO(ksamaras): Check num GPUs, threads_n= 4*GPUs
   /**Checking presence of GPU**/
   int deviceCount = 0;
 #ifdef __NVCC__
@@ -181,10 +185,19 @@ ThreadPoolService::ThreadPoolService(const edm::ParameterSet&, edm::ActivityRegi
 #endif
   //size_t threads_n = 4*deviceCount;
             /*DEBUG*/ if (deviceCount==0) return;
+
+  actR.watchPostBeginJob(this, &ThreadPoolService::startWorkers);
+  actR.watchPostEndJob(this, &ThreadPoolService::stopWorkers);
+}
+
+void ThreadPoolService::startWorkers()
+{
+  // continue only if !beginworking
+  if (beginworking_.test_and_set()) return;
+
   size_t threads_n = std::thread::hardware_concurrency();
   if(!threads_n)
     throw std::invalid_argument("more than zero threads expected");
-
   workers_.reserve(threads_n);
   for(; threads_n; --threads_n)
     workers_.emplace_back([this] (){
@@ -202,6 +215,19 @@ ThreadPoolService::ThreadPoolService(const edm::ParameterSet&, edm::ActivityRegi
         }
       }
     });
+  endworking_.clear();
+}
+
+void ThreadPoolService::stopWorkers()
+{
+  // continue only if !endworking
+  if (endworking_.test_and_set()) return;
+
+  stop_= true;
+  tasks_.abort();
+  for(std::thread& worker: workers_)
+    worker.join();
+  beginworking_.clear();
 }
 
 } // namespace service

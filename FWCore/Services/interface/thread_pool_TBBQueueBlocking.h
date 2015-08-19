@@ -31,13 +31,14 @@ Editor: Konstantinos Samaras-Tsakiris, kisamara@auth.gr
 #include <memory>
 #include <functional>
 #include <stdexcept>
+#include <cuda_runtime_api.h>
 
 #include <tbb/concurrent_queue.h>
 
-#ifdef __NVCC__
-#include "cuda_utils/cuda_launch_configuration.h"
-#include "cuda_utils/cuda_execution_policy.h"
-#endif
+#include "utils/cuda_launch_configuration.h"
+#include "utils/cuda_execution_policy.h"
+#include "utils/template_utils.h"
+#include "utils/cuda_pointer.h"
 
 #include "FWCore/ParameterSet/interface/ConfigurationDescriptions.h"
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
@@ -46,24 +47,6 @@ Editor: Konstantinos Samaras-Tsakiris, kisamara@auth.gr
 
 namespace edm{
 namespace service{
-
-template<int ...> struct Seq {};
-template<int N, int ...S> struct GenSeq: GenSeq<N-1, N-1, S...> { };
-template<int ...S> struct GenSeq<0, S...> {
-  typedef Seq<S...> type;
-};
-template<typename... Args> struct KernelArgs{
-  KernelArgs(Args&&... args): args_(std::forward<Args>(args)...) {}
-  std::tuple<Args...> args_;
-};
-template<typename... Args> struct ManagedArgs: KernelArgs<Args...>{
-  ManagedArgs(Args&&... args): KernelArgs<Args...>(std::forward<Args>(args)...)
-  {}
-};
-template<typename... Args> struct NonManagedArgs: KernelArgs<Args...>{
-  NonManagedArgs(Args&&... args): KernelArgs<Args...>(std::forward<Args>(args)...)
-  {}
-};
 
 /* Why not a singleton:
 http://jalf.dk/blog/2010/03/singletons-solving-problems-you-didnt-know-you-never-had-since-1995/
@@ -95,8 +78,6 @@ public:
     tasks_.emplace([task](){ (*task)(); });
     return resultFut;
   }
-
-#ifdef __NVCC__
   // Launch kernel function with args
   // Configure execution policy before launch!
   template<typename F, typename... Args>
@@ -104,42 +85,36 @@ public:
     cudaLaunchManaged(const cudaConfig::ExecutionPolicy& execPol, F&& f, Args&&... args)
   {
     return getFuture([&](){
+#ifdef __NVCC__
       f<<<execPol.getGridSize(), execPol.getBlockSize(),
           execPol.getSharedMemBytes()>>>(args...);
+#endif
       //std::cout<<"[In task]: Launched\n";
       cudaStreamSynchronize(cudaStreamPerThread);
       //std::cout<<"[In task]: Synced\n";
     });
   }
+  // Overload: differentiate between managed-nonmanaged args
+  template<typename F, typename... NMArgs, template<typename...> class NM,
+            typename... MArgs, template<typename...> class M>
+  typename std::enable_if<std::is_same<NM<NMArgs...>,utils::NonManagedArgs<NMArgs...>>::value
+                          && std::is_same<M<MArgs...>,utils::ManagedArgs<MArgs...>>::value,
+                          std::future<typename std::result_of<F(void)>>>::type
+    cudaLaunchManaged(const cudaConfig::ExecutionPolicy& execPol,
+                      F&& f, NM<NMArgs...>&& nonManaged, M<MArgs...>&& managed)
+  ;/*{
+    std::cout<<"Separate managed-unmanaged args!\n";
+    //return cudaLaunchManaged(std::forward<F>(f), nonManaged.forward(), managed.forward());
+    return unpackArgsTuple(typename GenSeq<sizeof...(NMArgs)+
+                          sizeof...(MArgs)>::type(), std::forward<F>(f), 
+                          merge(nonManaged,managed));
+  }*/
   template<typename F>
   static cudaConfig::ExecutionPolicy configureLaunch(int totalThreads, F&& f){
     cudaConfig::ExecutionPolicy execPol;
     checkCuda(cudaConfig::configure(execPol, std::forward<F>(f), totalThreads));
     return execPol;
   }
-#else
-  // Declared but undefined
-  template<typename F, typename... Args>
-  inline std::future<typename std::result_of<F(Args...)>::type>
-    cudaLaunchManaged(void*, F&& f, Args&&... args);
-  template<typename F>
-  static int configureLaunch(int totalThreads, F&& f);
-#endif
-  // Overload: differentiate between managed-nonmanaged args
-  /*template<typename F, typename... NMArgs, template<typename...> class NM,
-            typename... MArgs, template<typename...> class M>
-  typename std::enable_if<std::is_same<NM<NMArgs...>,NonManagedArgs<NMArgs...>>::value
-                          && std::is_same<M<MArgs...>,ManagedArgs<MArgs...>>::value,
-                          std::future<typename std::result_of<F(void)>>>::type
-      cudaLaunchManaged(F&& f, NM<NMArgs...>&& nonManaged, M<MArgs...>&& managed)
-  {
-    std::cout<<"Separate managed-unmanaged args!";
-    //return cudaLaunchManaged(std::forward<F>(f), nonManaged.forward(), managed.forward());
-    return unpackArgsTuple(typename GenSeq<sizeof...(NMArgs)+
-                          sizeof...(MArgs)>::type(), std::forward<F>(f), 
-                          merge(nonManaged,managed));
-  }*/
-  
   // Clears tasks queue
   void clearTasks(){ tasks_.clear(); }
 	virtual ~ThreadPoolService(){
@@ -185,7 +160,6 @@ ThreadPoolService::ThreadPoolService(const edm::ParameterSet&, edm::ActivityRegi
 #endif
   //size_t threads_n = 4*deviceCount;
             /*DEBUG*/ if (deviceCount==0) return;
-
   actR.watchPostBeginJob(this, &ThreadPoolService::startWorkers);
   actR.watchPostEndJob(this, &ThreadPoolService::stopWorkers);
 }

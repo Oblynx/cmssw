@@ -15,6 +15,8 @@
 #ifndef CUDA_EXECUTION_POLICY_H
 #define CUDA_EXECUTION_POLICY_H
 
+#include <cuda_runtime_api.h>
+
 namespace cudaConfig{
 
 class ExecutionPolicy {
@@ -48,7 +50,7 @@ public:
         if (gridSize_.x > 0) state_ |= GridSize; 
         else state_ &= (FullManual - GridSize);
         return *this;
-    }   
+    }
     ExecutionPolicy& setBlockSize(const dim3 arg) {
         blockSize_ = arg; 
         if (blockSize_.x > 0) state_ |= BlockSize; 
@@ -65,6 +67,12 @@ public:
         return *this;
     }
 
+    ExecutionPolicy& autoGrid(const dim3 arg){
+        gridSize_.x= (blockSize_.x>0)? (arg.x-1)/blockSize_.x+1: 0;
+        gridSize_.y= (blockSize_.y>0)? (arg.y-1)/blockSize_.y+1: 0;
+        gridSize_.z= (blockSize_.z>0)? (arg.z-1)/blockSize_.z+1: 0;
+        return *this;
+    }
 private:
     int    state_;
     dim3   gridSize_;

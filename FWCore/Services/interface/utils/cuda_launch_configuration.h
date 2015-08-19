@@ -15,6 +15,7 @@
 #ifndef CUDA_LAUNCH_CONFIGURATION_H
 #define CUDA_LAUNCH_CONFIGURATION_H
 
+#include <cuda_runtime_api.h>
 //#include <cuda_occupancy.h>
 #include "cuda_execution_policy.h"
 
@@ -56,7 +57,7 @@ cudaError_t configure(ExecutionPolicy& p, F&& kernel, int totalThreads= 1,
     status= cudaOccupancyMaxPotentialBlockSize(&minGridSize, &suggestedBlockSize,
                                                kernel, dynamicSMemSize, blockSizeLimit);
     if (status != cudaSuccess) return status;
-    p.setBlockSize({suggestedBlockSize,1,1});
+    p.setBlockSize({static_cast<unsigned>(suggestedBlockSize),1,1});
   }
   if ((configState & ExecutionPolicy::GridSize) == 0)
     p.setGridSize({(totalThreads+p.getBlockSize().x-1)/p.getBlockSize().x,1,1});

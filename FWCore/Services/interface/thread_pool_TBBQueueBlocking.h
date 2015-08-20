@@ -1,5 +1,5 @@
 /*
-CMSSW CUDA management and thread pool Service
+CMSSW CUDA management and Thread Pool Service
 Author: Konstantinos Samaras-Tsakiris, kisamara@auth.gr
 *//*
   --> Thread Pool:
@@ -40,7 +40,6 @@ freely, subject to the following restrictions:
 
 #include "utils/cuda_launch_configuration.h"
 #include "utils/cuda_execution_policy.h"
-#include "utils/template_utils.h"
 #include "utils/cuda_pointer.h"
 
 #include "FWCore/ParameterSet/interface/ConfigurationDescriptions.h"
@@ -56,7 +55,7 @@ http://jalf.dk/blog/2010/03/singletons-solving-problems-you-didnt-know-you-never
 */
 class ThreadPoolService {
 public:
-  //!< Checks CUDA and registers callbacks
+  //!< @brief Checks CUDA and registers callbacks
   ThreadPoolService(const edm::ParameterSet&, edm::ActivityRegistry& actR);
   // deleted copy&move ctors&assignments
 	ThreadPoolService(const ThreadPoolService&) = delete;
@@ -67,7 +66,7 @@ public:
     descr.add("ThreadPoolService", edm::ParameterSetDescription());
   }
 
-  // Schedule task and get its future handle
+  //!< @brief Schedule task and get its future handle
   template<typename F, typename... Args>
 	inline std::future<typename std::result_of<F(Args...)>::type>
     getFuture(F&& f, Args&&... args)
@@ -81,44 +80,27 @@ public:
     tasks_.emplace([task](){ (*task)(); });
     return resultFut;
   }
-  // Launch kernel function with args
   // Configure execution policy before launch!
+  //!< @brief Launch kernel function with args
   template<typename F, typename... Args>
-  inline std::future<void>
+  inline std::future<cudaError_t>
     cudaLaunchManaged(const cudaConfig::ExecutionPolicy& execPol, F&& f, Args&&... args)
   {
-    using packaged_task_t = std::packaged_task<void()>;
+    using packaged_task_t = std::packaged_task<cudaError_t()>;
 
-    std::shared_ptr<packaged_task_t> task(new packaged_task_t([&](){
-      #ifdef __NVCC__
-        f<<<execPol.getGridSize(), execPol.getBlockSize(),
-            execPol.getSharedMemBytes()>>>(
-                                              std::forward<Args>(args)...);
-      #endif
-        //std::cout<<"[In task]: Launched\n";
-        cudaStreamSynchronize(cudaStreamPerThread);
-        //std::cout<<"[In task]: Synced\n";
+    std::shared_ptr<packaged_task_t> task(new packaged_task_t([&]()-> cudaError_t{
+        cudaError_t status;
+        #ifdef __NVCC__
+          f<<<execPol.getGridSize(), execPol.getBlockSize(),
+              execPol.getSharedMemBytes()>>>(utils::passKernelArg<Args>(args)...);
+        #endif
+        status= cudaStreamSynchronize(cudaStreamPerThread);
+        return status;
     }));
-    std::future<void> resultFut = task->get_future();
+    std::future<cudaError_t> resultFut = task->get_future();
     tasks_.emplace([task](){ (*task)(); });
     return resultFut;
   }
-
-  /*template<typename T>
-  ??? attachManagedMemory(T&& arg)
-  {
-    IFcudaPointer(std::forward<Head>(first));
-    *//*struct CudaPtrArg{
-      void operate(){
-
-      }
-    };
-    struct NonCudaPtrArg{
-      void operate(){}
-    };
-    std::conditional<std::is_same<Head, cudaPointer>, CudaPtrArg, NonCudaPtrArg>::
-      type::operate(std::forward<Head>(first));*/
-  //}
 
   template<typename F>
   static cudaConfig::ExecutionPolicy configureLaunch(int totalThreads, F&& f){
@@ -126,29 +108,17 @@ public:
     checkCuda(cudaConfig::configure(execPol, std::forward<F>(f), totalThreads));
     return execPol;
   }
-  // Clears tasks queue
+  //!< @brief Clears tasks queue
   void clearTasks(){ tasks_.clear(); }
 	virtual ~ThreadPoolService(){
     std::cout << "---| Destroying service |---\n";
     stopWorkers();
   }
-  //!< @brief Constructs workers
+  //!< @brief Constructs workers and sets them spinning
   void startWorkers();
-  //!< @brief Joins all threads
+  //!< @brief Joins all worker threads
   void stopWorkers();
 private:
-  template<typename T, typename std::enable_if<std::is_base_of<cudaPtrBase, T>::value>::type>
-  auto preprocessManagedMem(T&& cudaPtr) -> decltype(cudaPtr.p){
-    std::cout<<"[memAttach]: Managed arg!\n";
-    cudaPtr.attachStream();
-    return cudaPtr.p;
-  }
-  template<typename T, typename std::enable_if<!std::is_base_of<cudaPtrBase, T>::value>::type>
-  auto preprocessManagedMem(T&& valueArg) -> decltype(valueArg){
-    //Do nothing
-    std::cout<<"[memAttach]: value arg\n";
-    return valueArg;
-  }
   // need to keep track of threads so we can join them
 	std::vector< std::thread > workers_;
   // the task concurrent queue
@@ -169,13 +139,14 @@ ThreadPoolService::ThreadPoolService(const edm::ParameterSet&, edm::ActivityRegi
   std::cout<<"Constructing ThreadPoolService\n";
   /**Checking presence of GPU**/
   int deviceCount = 0;
-#ifdef __NVCC__
-  cudaError_t error_id = cudaGetDeviceCount(&deviceCount);
+  cudaError_t error_id= cudaSuccess;
+  #ifdef __NVCC__
+    error_id= cudaGetDeviceCount(&deviceCount);
+  #endif
   if (error_id == cudaErrorNoDevice || deviceCount == 0){
     std::cout<<"No device available!\n";
     cuda_= false;
   } else cuda_= true;
-#endif
   //size_t threads_n = 4*deviceCount;
             /*DEBUG*/ if (deviceCount==0) return;
   actR.watchPostBeginJob(this, &ThreadPoolService::startWorkers);

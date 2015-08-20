@@ -30,11 +30,11 @@ using namespace edm;
 class TestThreadPoolService: public CppUnit::TestFixture {
   CPPUNIT_TEST_SUITE(TestThreadPoolService);
   CPPUNIT_TEST(basicUseTest);
-  //CPPUNIT_TEST(passServiceArgTest);
-  CPPUNIT_TEST(CUDATest);
+  CPPUNIT_TEST(passServiceArgTest);
+  CPPUNIT_TEST(basicCUDATest);
   CPPUNIT_TEST(CUDAAutolaunchManagedTest);
-  CPPUNIT_TEST(CUDAAutolaunchCUDAPTRTest);
   CPPUNIT_TEST(CUDAAutolaunch2Dconfig);
+  CPPUNIT_TEST(CudaPointerAutolaunchTest);
   CPPUNIT_TEST(timeBenchmarkTask);
   CPPUNIT_TEST_SUITE_END();
 public:
@@ -50,14 +50,14 @@ public:
   //!< @brief Test behaviour if the task itself enqueues another task in same pool
   void passServiceArgTest();
   //!< @brief Test scheduling many threads that launch CUDA kernels (pool.getFuture)
-  void CUDATest();
+  void basicCUDATest();
   //!< @brief Test auto launch cuda kernel with its arguments in managed memory
   void CUDAAutolaunchManagedTest();
-  //!< @brief Test usage of the smart cuda pointer class "cudaPointer"
-  void CUDAAutolaunchCUDAPTRTest();
   //!< @brief Use auto config to manually configure a 2D kernel launch
   void CUDAAutolaunch2Dconfig();
-  //!< @brief Time a simple task launch use case of the service
+  //!< @brief Test usage of the smart cuda pointer class "cudaPointer"
+  void CudaPointerAutolaunchTest();
+  //!< @brief Time a simple use case of the service
   void timeBenchmarkTask();
 private:
   void print_id(int id);
@@ -67,13 +67,10 @@ private:
   mutex mtx;
   condition_variable cv;
   bool ready= false;
-  long sum= 0;
+  atomic<long> sum;
   const int BLOCK_SIZE= 32;
 
   ServiceToken serviceToken;
-  string serviceConfig= "import FWCore.ParameterSet.Config as cms\n"
-                        "process = cms.Process('testThreadPoolService')\n"
-                        "process.ThreadPoolService = cms.Service('ThreadPoolService')\n";
   unique_ptr<ServiceRegistry::Operate> operate;
   unique_ptr<Service<service::ThreadPoolService>> poolPtr;
 };
@@ -91,7 +88,7 @@ void TestThreadPoolService::basicUseTest()
   (*poolPtr)->getFuture([]() {cout<<"Empty task\n";}).get();
   vector<future<void>> futures;
   const int N= 30;
-
+  sum= 0;
   // spawn N threads:
   for (int i=0; i<N; ++i)
     futures.emplace_back((*poolPtr)->getFuture(&TestThreadPoolService::print_id, this,i+1));
@@ -101,24 +98,29 @@ void TestThreadPoolService::basicUseTest()
   cout << "\n[basicUseTest] DONE, sum= "<<sum<<"\n";
 	for(int i=0; i<N; i++)
 		sum-= i+1;
-  CPPUNIT_ASSERT_EQUAL(sum, 0l);
+  CPPUNIT_ASSERT_EQUAL(sum.load(), 0l);
 }
 void TestThreadPoolService::passServiceArgTest()
 {
   cout<<"Starting passServiceArg test...\n"
-      <<"(requires >1 thread, otherwise will never finish)\n";
+      <<"(requires service with >1 thread)\n";
   (*poolPtr)->getFuture([&]() {
     cout<<"Recursive enqueue #1\n";
-    //ServiceRegistry::Operate operate(serviceToken);
-    (*poolPtr)->getFuture([]() {cout<<"Pool service captured\n";}).get();
+    ServiceRegistry::Operate operate(serviceToken);
+    (*poolPtr)->getFuture([]() {cout<<"Pool service ref captured\n";}).get();
   }).get();
-  (*poolPtr)->getFuture([this](Service<service::ThreadPoolService> poolArg){
+  (*poolPtr)->getFuture([this](const Service<service::ThreadPoolService> poolArg){
     cout<<"Recursive enqueue #2\n";
-    //ServiceRegistry::Operate operate(serviceToken);
-    poolArg->getFuture([]() {cout<<"Pool service passed as arg\n";}).get();
-  }, (*poolPtr)).get();
+    ServiceRegistry::Operate operate(serviceToken);
+    poolArg->getFuture([]() {cout<<"Pool service passed as arg (Service<>->val)\n";}).get();
+  }, *poolPtr).get();
+  (*poolPtr)->getFuture([this](const Service<service::ThreadPoolService>& poolArg){
+    cout<<"Recursive enqueue #3\n";
+    ServiceRegistry::Operate operate(serviceToken);
+    poolArg->getFuture([]() {cout<<"Pool service passed as arg (Service<>->cref)\n";}).get();
+  }, std::cref(*poolPtr)).get();
 }
-void TestThreadPoolService::CUDATest()
+void TestThreadPoolService::basicCUDATest()
 {
   cout<<"Starting CUDA test...\n";
   vector<future<void>> futures;
@@ -139,7 +141,7 @@ void TestThreadPoolService::CUDATest()
   }
   for (auto& future: futures) future.get();
 }
-#define TOLERANCE 5e-1
+#define TOLERANCEmul 5e-1
 void TestThreadPoolService::CUDAAutolaunchManagedTest()
 {
   cout<<"Starting CUDA autolaunch (managed) test...\n";
@@ -149,59 +151,33 @@ void TestThreadPoolService::CUDAAutolaunchManagedTest()
   cudaMallocManaged(&out, n*sizeof(float));
   for(int i=0; i<n; i++) in[i]= 10*cos(3.141592/100*i);
 
-  cout<<"Launching auto...\n";
+  cout<<"Launching auto config...\n";
   // Auto launch config
   cudaConfig::ExecutionPolicy execPol((*poolPtr)->configureLaunch(n, longKernel));
   (*poolPtr)->cudaLaunchManaged(execPol, longKernel, n,times,in,out).get();
-  for(int i=0; i<n; i++) if (times*in[i]-out[i]>TOLERANCE || times*in[i]-out[i]<-TOLERANCE){
+  for(int i=0; i<n; i++) if (abs(times*in[i]-out[i])>TOLERANCEmul){
     cout<<"ERROR: i="<<i<<'\n';
-    CPPUNIT_ASSERT_DOUBLES_EQUAL(times*in[i], out[i], TOLERANCE);
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(times*in[i], out[i], TOLERANCEmul);
   }
 
-  cout<<"Launching manual...\n";
+  cout<<"Launching manual config...\n";
   // Manual launch config
   execPol= cudaConfig::ExecutionPolicy(320, (n-1+320)/320);
   (*poolPtr)->cudaLaunchManaged(execPol, longKernel, n,times,in,out).get();
-  for(int i=0; i<n; i++) if (times*in[i]-out[i]>TOLERANCE || times*in[i]-out[i]<-TOLERANCE){
+  for(int i=0; i<n; i++) if (abs(times*in[i]-out[i])>TOLERANCEmul){
     cout<<"ERROR: i="<<i<<'\n';
-    CPPUNIT_ASSERT_DOUBLES_EQUAL(times*in[i], out[i], TOLERANCE);
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(times*in[i], out[i], TOLERANCEmul);
   }
 
   cudaFree(in);
   cudaFree(out);
 }
-void TestThreadPoolService::CUDAAutolaunchCUDAPTRTest()
-{
-  cout<<"Starting CUDA autolaunch *CudaPointer* test...\n";
-  const int n= 10000000, times= 1000;
-  cudaPointer<float> in(n);
-  cudaPointer<float> out(n);
-  for(int i=0; i<n; i++) in.p[i]= 10*cos(3.141592/100*i);
-
-  cout<<"Launching auto...\n";
-  // Auto launch config
-  cudaConfig::ExecutionPolicy execPol((*poolPtr)->configureLaunch(n, longKernel));
-  (*poolPtr)->cudaLaunchManaged(execPol, longKernel, n,times,in,out).get();
-  for(int i=0; i<n; i++) if (times*in.p[i]-out.p[i]>TOLERANCE || times*in.p[i]-out.p[i]<-TOLERANCE){
-    cout<<"ERROR: i="<<i<<'\n';
-    CPPUNIT_ASSERT_DOUBLES_EQUAL(times*in.p[i], out.p[i], TOLERANCE);
-  }
-
-  cout<<"Launching manual...\n";
-  // Manual launch config
-  execPol= cudaConfig::ExecutionPolicy(320, (n-1+320)/320);
-  (*poolPtr)->cudaLaunchManaged(execPol, longKernel, n,times,in,out).get();
-  for(int i=0; i<n; i++) if (times*in.p[i]-out.p[i]>TOLERANCE || times*in.p[i]-out.p[i]<-TOLERANCE){
-    cout<<"ERROR: i="<<i<<'\n';
-    CPPUNIT_ASSERT_DOUBLES_EQUAL(times*in.p[i], out.p[i], TOLERANCE);
-  }
-}
-#undef TOLERANCE
-#define TOLERANCE 1e-15
+#define TOLERANCEadd 1e-15
 void TestThreadPoolService::CUDAAutolaunch2Dconfig()
 {
   cout<<"Starting CUDA 2D launch config test...\n";
   const int threadN= std::thread::hardware_concurrency();
+  vector<future<cudaError_t>> futVec(threadN);
   float *A[threadN], *B[threadN], *C[threadN];
   // m: number of rows
   // n: number of columns
@@ -216,12 +192,14 @@ void TestThreadPoolService::CUDAAutolaunch2Dconfig()
       B[thread][i]= (thread+1)*sin(PI/100*i+PI/6)*sin(PI/100*i+PI/6);
     }
   }
-  vector<future<cudaError_t>> futVec(threadN);
+
   //Recommended launch configuration (1D)
   cudaConfig::ExecutionPolicy execPol((*poolPtr)->configureLaunch(n*m, matAddKernel));
   //Explicitly set desired launch config (2D) based on the previous recommendation
   const unsigned blockSize= sqrt(execPol.getBlockSize().x);
+  //Explicitly set blockSize, automatically demand adequate grid size to map the input
   execPol.setBlockSize({blockSize, blockSize}).autoGrid({n,m});
+
   //Semi-manually launch GPU tasks
   for(int thread=0; thread<threadN; thread++){
     futVec[thread]= (*poolPtr)->cudaLaunchManaged(execPol, matAddKernel, m, n,
@@ -237,11 +215,37 @@ void TestThreadPoolService::CUDAAutolaunch2Dconfig()
   for(int thread=0; thread<threadN; thread++){
     //Assert matrix addition correctness
     for (int i=0; i<n*m; i++)
-      if (abs(A[thread][i]+B[thread][i]-C[thread][i]) > TOLERANCE){
+      if (abs(A[thread][i]+B[thread][i]-C[thread][i]) > TOLERANCEadd){
         CPPUNIT_ASSERT_DOUBLES_EQUAL(A[thread][i]+B[thread][i],
-                                     C[thread][i], TOLERANCE);
+                                     C[thread][i], TOLERANCEadd);
       }
     cudaFree(A[thread]); cudaFree(B[thread]); cudaFree(C[thread]);
+  }
+}
+void TestThreadPoolService::CudaPointerAutolaunchTest()
+{
+  cout<<"Starting *CudaPointer* autolaunch test...\n";
+  const int n= 10000000, times= 1000;
+  cudaPointer<float> in(n);
+  cudaPointer<float> out(n);
+  for(int i=0; i<n; i++) in.p[i]= 10*cos(3.141592/100*i);
+
+  cout<<"Launching auto...\n";
+  // Auto launch config
+  cudaConfig::ExecutionPolicy execPol((*poolPtr)->configureLaunch(n, longKernel));
+  (*poolPtr)->cudaLaunchManaged(execPol, longKernel, n,times,in,out).get();
+  for(int i=0; i<n; i++) if (abs(times*in.p[i]-out.p[i])>TOLERANCEmul){
+    cout<<"ERROR: i="<<i<<'\n';
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(times*in.p[i], out.p[i], TOLERANCEmul);
+  }
+
+  cout<<"Launching manual...\n";
+  // Manual launch config
+  execPol= cudaConfig::ExecutionPolicy(320, (n-1+320)/320);
+  (*poolPtr)->cudaLaunchManaged(execPol, longKernel, n,times,in,out).get();
+  for(int i=0; i<n; i++) if (abs(times*in.p[i]-out.p[i])>TOLERANCEmul){
+    cout<<"ERROR: i="<<i<<'\n';
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(times*in.p[i], out.p[i], TOLERANCEmul);
   }
 }
 void TestThreadPoolService::timeBenchmarkTask()
@@ -272,7 +276,7 @@ void TestThreadPoolService::timeBenchmarkTask()
 
     diff += (i>0)? end-start: start-start;
   }
-  cout << "ThreadPoolService at \"natural\" task burden: "<< chrono::duration <double, nano> (diff).count()/(N/threadN) << " ns" << endl;
+  cout << "ThreadPoolService at \"natural\" task burden (tasks as many as threads): "<< chrono::duration <double, nano> (diff).count()/(N/threadN) << " ns" << endl;
 }
 
 /*$$$---TESTS END---$$$*/
@@ -287,9 +291,13 @@ void TestThreadPoolService::setUp(){
   //Alternative way to setup Services
   /*ParameterSet pSet;
   pSet.addParameter("@service_type", string("ThreadPoolService"));
+  pSet.addParameter("thread_num", 2*std::thread::hardware_concurrency());
   vector<ParameterSet> vec;
   vec.push_back(pSet);*/
-  serviceToken= edm::ServiceRegistry::createServicesFromConfig(serviceConfig);
+  serviceToken= edm::ServiceRegistry::createServicesFromConfig(
+        "import FWCore.ParameterSet.Config as cms\n"
+        "process = cms.Process('testThreadPoolService')\n"
+        "process.ThreadPoolService = cms.Service('ThreadPoolService')\n");
   operate= unique_ptr<ServiceRegistry::Operate>(
       //new ServiceRegistry::Operate(edm::ServiceRegistry::createSet(vec)));
       new ServiceRegistry::Operate(serviceToken));

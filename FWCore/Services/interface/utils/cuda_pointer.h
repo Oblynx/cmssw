@@ -45,17 +45,17 @@ template<typename T, typename std::enable_if< std::is_base_of< cudaPtrBase,
 inline auto passKernelArg(typename std::remove_reference<T>::type& cudaPtr) noexcept
 	-> decltype(cudaPtr.p)
 {
-  std::cout<<"[passKernelArg]: Managed arg!\n";
+  //std::cout<<"[passKernelArg]: Managed arg!\n";
   cudaPtr.attachStream();
   return cudaPtr.p;
 }
 
-//!< @brief Perfectly forward non-cudaPointer args
+//!< @brief Perfectly forward non-cudaPointer args (based on std::forward)
 template<typename T, typename std::enable_if< !std::is_base_of< cudaPtrBase,
 						typename std::remove_reference<typename std::remove_cv<T>::type>
 								::type >::value, int >::type= 0>
 inline T&& passKernelArg(typename std::remove_reference<T>::type& valueArg) noexcept{
-  std::cout<<"[passKernelArg]: value arg\n";
+  //std::cout<<"[passKernelArg]: value arg\n";
   return static_cast<T&&>(valueArg);
 }
 template<typename T, typename std::enable_if< !std::is_base_of< cudaPtrBase,
@@ -64,7 +64,7 @@ template<typename T, typename std::enable_if< !std::is_base_of< cudaPtrBase,
 inline T&& passKernelArg(typename std::remove_reference<T>::type&& valueArg) noexcept{
   static_assert(!std::is_lvalue_reference<T>::value,
                 "Can not forward an rvalue as an lvalue.");
-  std::cout<<"[passKernelArg]: value arg (rvalue ref)\n";
+  //std::cout<<"[passKernelArg]: value arg (rvalue ref)\n";
   return static_cast<T&&>(valueArg);
 }
 

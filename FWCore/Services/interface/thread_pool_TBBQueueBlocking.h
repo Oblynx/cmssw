@@ -97,7 +97,7 @@ public:
         status= cudaStreamSynchronize(cudaStreamPerThread);
         return status;
     }));
-    std::future<cudaError_t> resultFut = task->get_future();
+    std::future<cudaError_t> resultFut= task->get_future();
     tasks_.emplace([task](){ (*task)(); });
     return resultFut;
   }
@@ -119,6 +119,7 @@ public:
   //!< @brief Joins all worker threads
   void stopWorkers();
 private:
+  size_t threadNum= 0;
   // need to keep track of threads so we can join them
 	std::vector< std::thread > workers_;
   // the task concurrent queue
@@ -132,7 +133,7 @@ private:
   std::atomic_bool cuda_;
 };
 
-ThreadPoolService::ThreadPoolService(const edm::ParameterSet&, edm::ActivityRegistry& actR):
+ThreadPoolService::ThreadPoolService(const edm::ParameterSet& pSet, edm::ActivityRegistry& actR):
   stop_(false), cuda_(false)
 {
   beginworking_.clear(); endworking_.test_and_set();
@@ -147,8 +148,10 @@ ThreadPoolService::ThreadPoolService(const edm::ParameterSet&, edm::ActivityRegi
     std::cout<<"No device available!\n";
     cuda_= false;
   } else cuda_= true;
-  //size_t threads_n = 4*deviceCount;
+  //size_t threadNum = 4*deviceCount;
             /*DEBUG*/ if (deviceCount==0) return;
+  if (pSet.exists("thread_num"))
+    threadNum= pSet.getParameter<int>("thread_num");
   actR.watchPostBeginJob(this, &ThreadPoolService::startWorkers);
   actR.watchPostEndJob(this, &ThreadPoolService::stopWorkers);
 }
@@ -158,11 +161,12 @@ void ThreadPoolService::startWorkers()
   // continue only if !beginworking
   if (beginworking_.test_and_set()) return;
 
-  size_t threads_n = std::thread::hardware_concurrency();
-  if(!threads_n)
+  //Default thread number
+  if(!threadNum) threadNum = std::thread::hardware_concurrency();
+  if(!threadNum)
     throw std::invalid_argument("more than zero threads expected");
-  workers_.reserve(threads_n);
-  for(; threads_n; --threads_n)
+  workers_.reserve(threadNum);
+  for(; threadNum; --threadNum)
     workers_.emplace_back([this] (){
       while(!stop_)
       {

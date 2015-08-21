@@ -6,33 +6,59 @@
 
 //!< @class Useful for type identification
 class cudaPtrBase {};
-//!< @class <unique_ptr>-like managed cuda smart pointer
+
+//!< @class <unique_ptr>-like managed cuda smart pointer. T: non-const, non-ref
 template<typename T>
 class cudaPointer: cudaPtrBase{
 public:
-	//flag: cudaMemAttachGlobal | cudaMemAttachHost
-	cudaPointer(int elementN, unsigned flag=cudaMemAttachGlobal): p(new T), attachment(flag){
-		cudaMallocManaged(&p, elementN*sizeof(T), flag);
+	enum Attachment{
+		global= cudaMemAttachGlobal,
+		host= cudaMemAttachHost,
+		single= cudaMemAttachSingle
+	};
+	//flag default= host: see CUDA C Programming Guide J.2.2.6
+	// TODO: What if malloc fails???
+	cudaPointer(int elementN=1, Attachment flag=host): p(new T),
+									attachment(flag), sizeOnDevice(elementN*sizeof(T)){
+		static_assert(!std::is_const<T>::value && !std::is_reference<T>::value,
+		              "\nCannot allocate cuda managed memory for const-qualified "
+		              "or reference types.\nConsult the CUDA C Programming Guide "
+		              "section E.2.2.2. __managed__ Qualifier.\n");
+		status= cudaMallocManaged(&p, elementN*sizeof(T), flag);
 	}
 	//Delete copy constructor and assignment
 	cudaPointer(const cudaPointer&) =delete;
 	cudaPointer& operator=(const cudaPointer&) =delete;
 
+	//Move constructor && assignment
+	cudaPointer(cudaPointer&& other) noexcept: p(other.p), sizeOnDevice(other.sizeOnDevice),
+				attachment(other.attachment), status(other.status) { other.p= NULL; }
+	cudaPointer& operator=(cudaPointer&& other) noexcept{
+		p= other.p; other.p= NULL;
+		sizeOnDevice= other.sizeOnDevice;
+		attachment= other.attachment;
+		status= other.status;
+	}
 	//p must retain ownership
 	~cudaPointer(){
 		cudaFree(p);
 	}
 	//Only call default if on a new thread
 	void attachStream(cudaStream_t stream= cudaStreamPerThread){
-		attachment= cudaMemAttachSingle;
+		attachment= single;
 		cudaStreamAttachMemAsync(stream, p, 0, attachment);
 	}
+	cudaError_t getStatus() { return status; }
 
 	//public!
 	T* p;
 private:
-	unsigned attachment;
+	size_t sizeOnDevice;
+	Attachment attachment;
+	cudaError_t status;
 };
+
+//cudaConst??
 
 namespace edm{
 namespace service{

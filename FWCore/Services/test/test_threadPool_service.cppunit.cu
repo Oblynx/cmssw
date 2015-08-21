@@ -59,6 +59,8 @@ public:
   void CudaPointerAutolaunchTest();
   //!< @brief Time a simple use case of the service
   void timeBenchmarkTask();
+  //!< @brief Time kernel executions
+  void timeBenchmarkKernel();
 private:
   void print_id(int id);
   void go();
@@ -181,7 +183,7 @@ void TestThreadPoolService::CUDAAutolaunch2Dconfig()
   float *A[threadN], *B[threadN], *C[threadN];
   // m: number of rows
   // n: number of columns
-  unsigned m= 10000, n= 1000;
+  unsigned m= 1000, n= 100;
   //Setup data
   for(int thread=0; thread<threadN; thread++){
     cudaMallocManaged(&A[thread], m*n*sizeof(float));
@@ -251,7 +253,7 @@ void TestThreadPoolService::CudaPointerAutolaunchTest()
 void TestThreadPoolService::timeBenchmarkTask()
 {
   cout << "Starting quick task launch && completion time benchmark...\n";
-  long N= 200000;
+  long N= 10000;
   auto start= chrono::steady_clock::now();
   auto end = start;
   auto diff= start-start;
@@ -260,14 +262,14 @@ void TestThreadPoolService::timeBenchmarkTask()
 
   vector<future<void>> futVec(threadN);
   diff= start-start;
-  for (int i = 0; i <= N/threadN; ++i)
+  for (int i = 0; i <= N; ++i)
   {
     //Assign [threadN] tasks and wait for results
     start = chrono::steady_clock::now();
     for(register int thr=0; thr<threadN; thr++)
       futVec[thr]= (*poolPtr)->getFuture([] (){
-        //for (register short k=0; k<1; k++)
-        //  cout<<"";
+        for (register short k=0; k<5; k++)
+          cout<<"";
       });
     for(auto&& elt: futVec) {
       elt.get();
@@ -276,8 +278,78 @@ void TestThreadPoolService::timeBenchmarkTask()
 
     diff += (i>0)? end-start: start-start;
   }
-  cout << "ThreadPoolService at \"natural\" task burden (tasks as many as threads): "<< chrono::duration <double, nano> (diff).count()/(N/threadN) << " ns" << endl;
-}
+  cout << "ThreadPoolService at \"natural\" task burden (tasks = threads): "<< chrono::duration <double, nano> (diff).count()/N << " ns" << endl;
+
+  const int heavyBurden= 10;
+  threadN*= heavyBurden;
+  futVec.resize(threadN);
+  diff= start-start;
+  for (int i = 0; i <= N; ++i)
+  {
+    //Assign [threadN] tasks and wait for results
+    start = chrono::steady_clock::now();
+    for(register int thr=0; thr<threadN; thr++)
+      futVec[thr]= (*poolPtr)->getFuture([] (){
+        for (register short k=0; k<5; k++)
+          cout<<"";
+      });
+    for(auto&& elt: futVec) {
+      elt.get();
+    }
+    end = chrono::steady_clock::now();
+
+    diff += (i>0)? end-start: start-start;
+  }
+  cout << "ThreadPoolService at \"heavy\" task burden (tasks = "<<heavyBurden<<" x threads): "<< chrono::duration <double, nano> (diff).count()/N << " ns" << endl;
+  cout << "Divided by extra burden: "<< chrono::duration <double, nano> (diff).count()/N/heavyBurden << " ns" << endl;
+}/*
+void TestThreadPoolService::timeBenchmarkKernel()
+{
+  cout << "Starting quick task launch && completion time benchmark...\n";
+  long N= 10000;
+  auto start= chrono::steady_clock::now();
+  auto end = start;
+  auto diff= start-start;
+  future<void> fut;
+  int threadN= std::thread::hardware_concurrency();
+
+  vector<future<void>> futVec(threadN);
+  diff= start-start;
+  for (int i = 0; i <= N; ++i)
+  {
+    //Assign [threadN] tasks and wait for results
+    start = chrono::steady_clock::now();
+    for(register int thr=0; thr<threadN; thr++)
+      futVec[thr]= (*poolPtr)->cudaLaunchManaged();
+    for(auto&& elt: futVec) {
+      elt.get();
+    }
+    end = chrono::steady_clock::now();
+
+    diff += (i>0)? end-start: start-start;
+  }
+  cout << "ThreadPoolService at \"natural\" task burden (tasks = threads): "<< chrono::duration <double, nano> (diff).count()/N << " ns" << endl;
+
+  const int heavyBurden= 10;
+  threadN*= heavyBurden;
+  futVec.resize(threadN);
+  diff= start-start;
+  for (int i = 0; i <= N; ++i)
+  {
+    //Assign [threadN] tasks and wait for results
+    start = chrono::steady_clock::now();
+    for(register int thr=0; thr<threadN; thr++)
+      futVec[thr]= (*poolPtr)->cudaLaunchManaged();
+    for(auto&& elt: futVec) {
+      elt.get();
+    }
+    end = chrono::steady_clock::now();
+
+    diff += (i>0)? end-start: start-start;
+  }
+  cout << "ThreadPoolService at \"heavy\" task burden (tasks = "<<heavyBurden<<" x threads): "<< chrono::duration <double, nano> (diff).count()/N << " ns" << endl;
+  cout << "Divided by extra burden: "<< chrono::duration <double, nano> (diff).count()/N/heavyBurden << " ns" << endl;
+}*/
 
 /*$$$---TESTS END---$$$*/
 

@@ -278,7 +278,8 @@ void TestThreadPoolService::timeBenchmarkTask()
 
     diff += (i>0)? end-start: start-start;
   }
-  cout << "ThreadPoolService at \"natural\" task burden (tasks = threads): "<< chrono::duration <double, nano> (diff).count()/N << " ns" << endl;
+  cout << "ThreadPoolService at \"natural\" task burden (tasks = threads): "
+       << chrono::duration <double, nano> (diff).count()/N << " ns" << endl;
 
   const int heavyBurden= 10;
   threadN*= heavyBurden;
@@ -300,8 +301,8 @@ void TestThreadPoolService::timeBenchmarkTask()
 
     diff += (i>0)? end-start: start-start;
   }
-  cout << "ThreadPoolService at \"heavy\" task burden (tasks = "<<heavyBurden<<" x threads): "<< chrono::duration <double, nano> (diff).count()/N << " ns" << endl;
-  cout << "Divided by extra burden: "<< chrono::duration <double, nano> (diff).count()/N/heavyBurden << " ns" << endl;
+  cout << "ThreadPoolService at \"heavy\" task burden (tasks = "<<heavyBurden<<" x threads): "
+       << chrono::duration <double, nano> (diff).count()/N/heavyBurden << " ns" << endl;
 }/*
 void TestThreadPoolService::timeBenchmarkKernel()
 {

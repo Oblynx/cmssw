@@ -66,17 +66,17 @@ template<typename... Args> struct NonManagedArgs: KernelArgs<Args...>{
 };
 
 // std::thread pool for resources recycling
-class ThreadPoolService {
+class CudaService {
 public:
   // the constructor just launches some amount of workers
-  ThreadPoolService(const edm::ParameterSet&, edm::ActivityRegistry&);
+  CudaService(const edm::ParameterSet&, edm::ActivityRegistry&);
   // deleted copy&move ctors&assignments
-  ThreadPoolService(const ThreadPoolService&) = delete;
-  ThreadPoolService& operator=(const ThreadPoolService&) = delete;
-  ThreadPoolService(ThreadPoolService&&) = delete;
-  ThreadPoolService& operator=(ThreadPoolService&&) = delete;
+  CudaService(const CudaService&) = delete;
+  CudaService& operator=(const CudaService&) = delete;
+  CudaService(CudaService&&) = delete;
+  CudaService& operator=(CudaService&&) = delete;
   static void fillDescriptions(edm::ConfigurationDescriptions& descr){
-    descr.add("ThreadPoolService", edm::ParameterSetDescription());
+    descr.add("CudaService", edm::ParameterSetDescription());
   }
 
   // Schedule task and get its future handle
@@ -140,7 +140,7 @@ public:
   }*/
 
   // the destructor joins all threads
-  virtual ~ThreadPoolService(){
+  virtual ~CudaService(){
     std::cout << "---| Destroying service |---\n";
     stop_= true;
     this->condition_.notify_all();
@@ -165,10 +165,10 @@ private:
 };
 
 // the constructor just launches some amount of workers
-ThreadPoolService::ThreadPoolService(const edm::ParameterSet&, edm::ActivityRegistry&):
+CudaService::CudaService(const edm::ParameterSet&, edm::ActivityRegistry&):
   stop_(false)
 {
-  std::cout<<"Constructing ThreadPoolService\n";
+  std::cout<<"Constructing CudaService\n";
   // TODO(ksamaras): Check num GPUs, threads_n= 4*GPUs
   /**Checking presence of GPU**/
   int deviceCount = 0;

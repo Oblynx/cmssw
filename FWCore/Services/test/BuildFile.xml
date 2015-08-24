@@ -20,7 +20,7 @@
   <use   name="FWCore/Utilities"/>
 </bin>
 
-<bin   name="TestThreadPoolService" file="test_threadPool_service.cppunit.cu">
+<bin   name="TestCudaService" file="test_cudaService.cppunit.cu">
   <use name="FWCore/Services"/>
   <use name="FWCore/ServiceRegistry"/>
   <use name="FWCore/PluginManager"/>

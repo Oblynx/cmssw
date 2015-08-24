@@ -2,7 +2,7 @@
 
 #include "FWCore/Services/src/SiteLocalConfigService.h"
 #include "FWCore/Services/src/Tracer.h"
-#include "FWCore/Services/interface/thread_pool_TBBQueueBlocking.h"
+#include "FWCore/Services/interface/cudaService_TBBQueueBlocking.h"
 #include "FWCore/Services/src/InitRootHandlers.h"
 #include "FWCore/Services/src/UnixSignalService.h"
 
@@ -24,13 +24,13 @@ using edm::service::SiteLocalConfigService;
 using edm::service::EnableFloatingPointExceptions;
 using edm::service::InitRootHandlers;
 using edm::service::UnixSignalService;
-using edm::service::ThreadPoolService;
+using edm::service::CudaService;
 
 DEFINE_FWK_SERVICE(Tracer);
 DEFINE_FWK_SERVICE(CPU);
-DEFINE_FWK_SERVICE(ThreadPoolService);
-/*typedef edm::serviceregistry::NoArgsMaker<ThreadPoolService> ThreadPoolServiceMaker;
-DEFINE_FWK_SERVICE_MAKER(ThreadPoolService, ThreadPoolServiceMaker);*/
+DEFINE_FWK_SERVICE(CudaService);
+/*typedef edm::serviceregistry::NoArgsMaker<CudaService> CudaServiceMaker;
+DEFINE_FWK_SERVICE_MAKER(CudaService, CudaServiceMaker);*/
 
 
 typedef edm::serviceregistry::NoArgsMaker<PrintLoadingPlugins> PrintLoadingPluginsMaker;

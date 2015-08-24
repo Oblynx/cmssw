@@ -51,11 +51,15 @@ cudaError_t configure(ExecutionPolicy& p, F&& kernel, int totalThreads= 1,
   int configState = p.getConfigState();
   if (configState == ExecutionPolicy::FullManual) return cudaSuccess;
 
-  int suggestedBlockSize, minGridSize;
-  cudaError_t status;
+  int suggestedBlockSize=0, minGridSize=0;
+  cudaError_t status= cudaSuccess;
   if ((configState & ExecutionPolicy::BlockSize) == 0) {
-    status= cudaOccupancyMaxPotentialBlockSize(&minGridSize, &suggestedBlockSize,
+    //Needs NVCC to compile... why?
+    #ifdef __NVCC__
+      status= cudaOccupancyMaxPotentialBlockSize(&minGridSize, &suggestedBlockSize,
                                                kernel, dynamicSMemSize, blockSizeLimit);
+    #endif
+      minGridSize++;  /*DEBUG*/
     if (status != cudaSuccess) return status;
     p.setBlockSize({static_cast<unsigned>(suggestedBlockSize),1,1});
   }

@@ -17,5 +17,3 @@ jetCoreClusterSplitter = cms.EDProducer("JetCoreClusterSplitter",
 	
 
     )
-
-

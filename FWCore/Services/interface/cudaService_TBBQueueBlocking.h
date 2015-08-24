@@ -129,7 +129,7 @@ namespace edm{namespace service{
 /**$$$~~~~~ CudaPointer method definitions ~~~~~$$$**/
   //Constructor
   template<typename T>
-  cudaPointer<T>::cudaPointer(edm::Service<edm::service::CudaService>& service, int elementN, Attachment flag):
+  cudaPointer<T>::cudaPointer(edm::Service<edm::service::CudaService>& service, unsigned elementN, Attachment flag):
       attachment(flag), sizeOnDevice(elementN*sizeof(T)), freeFlag(false),
       elementN(elementN), service_(service)
   {
@@ -176,7 +176,7 @@ namespace edm{namespace service{
   std::vector<T> cudaPointer<T>::getVec(bool release){
     std::vector<T> vec;
     vec.reserve(elementN);
-    for(int i=0; i<elementN; i++)
+    for(unsigned i=0; i<elementN; i++)
       vec.push_back(std::move(p[i]));
     if(release){
       freeFlag= true;

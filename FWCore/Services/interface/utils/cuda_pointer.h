@@ -21,7 +21,7 @@ public:
 	};
 	//flag default= host: see CUDA C Programming Guide J.2.2.6
 	// TODO: What if malloc fails???
-	cudaPointer(edm::Service<edm::service::CudaService>& service, int elementN=1, Attachment flag=host);
+	cudaPointer(edm::Service<edm::service::CudaService>& service, unsigned elementN=1, Attachment flag=host);
 	//Move constructor && assignment
 	cudaPointer(cudaPointer&& other) noexcept: p(other.p), attachment(other.attachment),
 			sizeOnDevice(other.sizeOnDevice), status(other.status),
@@ -50,7 +50,7 @@ private:
 	Attachment attachment;
 	cudaError_t status;
 	bool freeFlag= false;
-	int elementN;
+	unsigned elementN;
 	edm::Service<edm::service::CudaService>& service_;
 };
 

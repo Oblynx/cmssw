@@ -23,6 +23,13 @@
 #include <vector>
 #include <utility>
 
+#include "FWCore/ServiceRegistry/interface/Service.h"
+#include "FWCore/Services/interface/cudaService_TBBQueueBlocking.h"
+
+extern __global__ void simpleTaskKernel(unsigned meanExp, float* cls,
+                                        float* clx, float* cly);
+
+
 class JetCoreClusterSplitter : public edm::stream::EDProducer<> {
  public:
   JetCoreClusterSplitter(const edm::ParameterSet& iConfig);
@@ -271,6 +278,7 @@ std::vector<SiPixelCluster> JetCoreClusterSplitter::fittingSplit(
     return output;
   }
 
+  edm::Service<edm::service::CudaService> cudaService;
   std::vector<float> clx(meanExp);
   std::vector<float> cly(meanExp);
   std::vector<float> cls(meanExp);
@@ -428,18 +436,30 @@ std::vector<SiPixelCluster> JetCoreClusterSplitter::fittingSplit(
       cly[clusterForPixel[pixel_index]] += pixels[pixel_index].second.y * pixels[pixel_index].second.adc;
       cls[clusterForPixel[pixel_index]] += pixels[pixel_index].second.adc;
     }
-    for (unsigned int subcluster_index = 0;
-         subcluster_index < meanExp; subcluster_index++) {
-      if (cls[subcluster_index] != 0) {
-        clx[subcluster_index] /= cls[subcluster_index];
-        cly[subcluster_index] /= cls[subcluster_index];
-      }
-      if (verbose)
-        std::cout << "Center for cluster " << subcluster_index << " x,y "
-                  << clx[subcluster_index] << " "
-                  << cly[subcluster_index] << std::endl;
-      cls[subcluster_index] = 0;
-    }
+
+    std::cout << "@@@@@@@\n@@@@@@\n@@@@@@@\n@@@@@@@@\n@@@@@@@@";
+    cudaPointer<float> CUcls(cudaService, cls), CUclx(cudaService, clx),
+                       CUcly(cudaService, cly);
+    auto execPol= cudaService->configureLaunch(meanExp, simpleTaskKernel);
+    auto result= cudaService->cudaLaunchManaged(execPol, simpleTaskKernel, meanExp,
+                                                CUcls, CUclx, CUcly);
+    cls= CUcls.getVec(true), clx= CUclx.getVec(true), cly= CUcly.getVec(true);
+    std::cout << "@@@@@@@\n@@@@@@\n@@@@@@@\n@@@@@@@@\n@@@@@@@@";
+
+    /* Replaced by GPU kernel */
+    // for (unsigned int subcluster_index = 0;
+    //      subcluster_index < meanExp; subcluster_index++) {
+    //   if (cls[subcluster_index] != 0) {
+    //     clx[subcluster_index] /= cls[subcluster_index];
+    //     cly[subcluster_index] /= cls[subcluster_index];
+    //   }
+    //   if (verbose)
+    //     std::cout << "Center for cluster " << subcluster_index << " x,y "
+    //               << clx[subcluster_index] << " "
+    //               << cly[subcluster_index] << std::endl;
+    //   cls[subcluster_index] = 0;
+    // }
+
   }
   if (verbose) std::cout << "maxstep " << remainingSteps << std::endl;
   // accumulate pixel with same cl

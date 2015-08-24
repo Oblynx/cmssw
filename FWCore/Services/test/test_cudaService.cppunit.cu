@@ -89,8 +89,7 @@ __global__ void originalKernel(unsigned meanExp, float* cls, float* clx, float* 
 
 /*$$$---TESTS BEGIN---$$$*/
 
-void TestCudaService::basicUseTest()
-{
+void TestCudaService::basicUseTest(){
   cout<<"Starting basic test...\n";
   (*cuSerPtr)->getFuture([]() {cout<<"Empty task\n";}).get();
   vector<future<void>> futures;
@@ -107,8 +106,7 @@ void TestCudaService::basicUseTest()
 		sum-= i+1;
   CPPUNIT_ASSERT_EQUAL(sum.load(), 0l);
 }
-void TestCudaService::passServiceArgTest()
-{
+void TestCudaService::passServiceArgTest(){
   cout<<"Starting passServiceArg test...\n"
       <<"(requires service with >1 thread)\n";
   (*cuSerPtr)->getFuture([&]() {
@@ -127,8 +125,7 @@ void TestCudaService::passServiceArgTest()
     poolArg->getFuture([]() {cout<<"Pool service passed as arg (Service<>->cref)\n";}).get();
   }, std::cref(*cuSerPtr)).get();
 }
-void TestCudaService::basicCUDATest()
-{
+void TestCudaService::basicCUDATest(){
   cout<<"Starting CUDA test...\n";
   vector<future<void>> futures;
   const int N= 30;
@@ -149,8 +146,12 @@ void TestCudaService::basicCUDATest()
   for (auto& future: futures) future.get();
 }
 #define TOLERANCEmul 5e-1
-void TestCudaService::CUDAAutolaunchManagedTest()
-{
+void TestCudaService::CUDAAutolaunchManagedTest(){
+  if (!(*cuSerPtr)->cudaState()){
+    cout<<"GPU not available, skipping test.\n";
+    return;
+  }
+
   cout<<"Starting CUDA autolaunch (managed) test...\n";
   float *in, *out;
   const int n= 10000000, times= 1000;
@@ -180,8 +181,12 @@ void TestCudaService::CUDAAutolaunchManagedTest()
   cudaFree(out);
 }
 #define TOLERANCEadd 1e-15
-void TestCudaService::CUDAAutolaunch2Dconfig()
-{
+void TestCudaService::CUDAAutolaunch2Dconfig(){
+  if (!(*cuSerPtr)->cudaState()){
+    cout<<"GPU not available, skipping test.\n";
+    return;
+  }
+
   cout<<"Starting CUDA 2D launch config test...\n";
   const int threadN= std::thread::hardware_concurrency();
   vector<future<cudaError_t>> futVec(threadN);
@@ -229,12 +234,11 @@ void TestCudaService::CUDAAutolaunch2Dconfig()
     cudaFree(A[thread]); cudaFree(B[thread]); cudaFree(C[thread]);
   }
 }
-void TestCudaService::CudaPointerAutolaunchTest()
-{
+void TestCudaService::CudaPointerAutolaunchTest(){
   cout<<"Starting *CudaPointer* autolaunch test...\n";
   const int n= 10000000, times= 1000;
-  cudaPointer<float> in(n);
-  cudaPointer<float> out(n);
+  cudaPointer<float> in (*cuSerPtr,n);
+  cudaPointer<float> out(*cuSerPtr,n);
   for(int i=0; i<n; i++) in.p[i]= 10*cos(3.141592/100*i);
 
   cout<<"Launching auto...\n";
@@ -255,8 +259,7 @@ void TestCudaService::CudaPointerAutolaunchTest()
     CPPUNIT_ASSERT_DOUBLES_EQUAL(times*in.p[i], out.p[i], TOLERANCEmul);
   }
 }
-void TestCudaService::timeBenchmarkTask()
-{
+void TestCudaService::timeBenchmarkTask(){
   cout << "Starting quick task launch && completion time benchmark...\n";
   long N= 10000;
   auto start= chrono::steady_clock::now();
@@ -366,7 +369,8 @@ void TestCudaService::originalKernelTest(){
   uniform_real_distribution<float> randFl(0, 1000);
   vector<future<void>> futVec(3);
   unsigned meanExp= 1000000;
-  cudaPointer<float> cls(meanExp), clx(meanExp), cly(meanExp);
+  cudaPointer<float> cls(*cuSerPtr, meanExp), clx(*cuSerPtr, meanExp),
+                     cly(*cuSerPtr, meanExp);
   //Initialize
   futVec[0]= (*cuSerPtr)->getFuture([&] {
     for(int i=0; i<meanExp; i++) cls.p[i]= randFl(mt); });

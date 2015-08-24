@@ -147,7 +147,7 @@ void TestCudaService::basicCUDATest(){
 }
 #define TOLERANCEmul 5e-1
 void TestCudaService::CUDAAutolaunchManagedTest(){
-  if (!(*cuSerPtr)->cudaState()){
+  if (!(*cuSerPtr)->cudaStatus()){
     cout<<"GPU not available, skipping test.\n";
     return;
   }
@@ -182,7 +182,7 @@ void TestCudaService::CUDAAutolaunchManagedTest(){
 }
 #define TOLERANCEadd 1e-15
 void TestCudaService::CUDAAutolaunch2Dconfig(){
-  if (!(*cuSerPtr)->cudaState()){
+  if (!(*cuSerPtr)->cudaStatus()){
     cout<<"GPU not available, skipping test.\n";
     return;
   }
@@ -237,8 +237,8 @@ void TestCudaService::CUDAAutolaunch2Dconfig(){
 void TestCudaService::CudaPointerAutolaunchTest(){
   cout<<"Starting *CudaPointer* autolaunch test...\n";
   const int n= 10000000, times= 1000;
-  cudaPointer<float> in (*cuSerPtr,n);
-  cudaPointer<float> out(*cuSerPtr,n);
+  cudaPointer<float> in (n);
+  cudaPointer<float> out(n);
   for(int i=0; i<n; i++) in.p[i]= 10*cos(3.141592/100*i);
 
   cout<<"Launching auto...\n";
@@ -369,20 +369,20 @@ void TestCudaService::originalKernelTest(){
   uniform_real_distribution<float> randFl(0, 1000);
   vector<future<void>> futVec(3);
   unsigned meanExp= 1000000;
-  cudaPointer<float> cls(*cuSerPtr, meanExp), clx(*cuSerPtr, meanExp),
-                     cly(*cuSerPtr, meanExp);
+  cudaPointer<float> cls(meanExp), clx(meanExp),
+                     cly(meanExp);
   //Initialize
   futVec[0]= (*cuSerPtr)->getFuture([&] {
-    for(int i=0; i<meanExp; i++) cls.p[i]= randFl(mt); });
+    for(unsigned i=0; i<meanExp; i++) cls.p[i]= randFl(mt); });
   futVec[1]= (*cuSerPtr)->getFuture([&] {
-    for(int i=0; i<meanExp; i++) clx.p[i]= randFl(mt); });
+    for(unsigned i=0; i<meanExp; i++) clx.p[i]= randFl(mt); });
   futVec[2]= (*cuSerPtr)->getFuture([&] {
-    for(int i=0; i<meanExp; i++) cly.p[i]= randFl(mt); });
+    for(unsigned i=0; i<meanExp; i++) cly.p[i]= randFl(mt); });
   for(auto&& fut: futVec) fut.get();
 
   //Calculate results on CPU
   vector<float> cpuCls(meanExp), cpuClx(meanExp), cpuCly(meanExp);
-  for (int i= 0; i < meanExp; i++)
+  for (unsigned i= 0; i < meanExp; i++)
   {
     if (cls.p[i] != 0) {
       cpuClx[i]= clx.p[i]/cls.p[i];
@@ -397,15 +397,15 @@ void TestCudaService::originalKernelTest(){
   result.get();
 
   futVec[0]= (*cuSerPtr)->getFuture([&] {
-    for(int i=0; i<meanExp; i++)
+    for(unsigned i=0; i<meanExp; i++)
       CPPUNIT_ASSERT_DOUBLES_EQUAL(cpuCls[i], cls.p[i], TOLERANCEorig);
   });
   futVec[1]= (*cuSerPtr)->getFuture([&] {
-    for(int i=0; i<meanExp; i++)
+    for(unsigned i=0; i<meanExp; i++)
       CPPUNIT_ASSERT_DOUBLES_EQUAL(cpuCls[i], cls.p[i], TOLERANCEorig);
   });
   futVec[2]= (*cuSerPtr)->getFuture([&] {
-    for(int i=0; i<meanExp; i++)
+    for(unsigned i=0; i<meanExp; i++)
       CPPUNIT_ASSERT_DOUBLES_EQUAL(cpuCls[i], cls.p[i], TOLERANCEorig);
   });
   for(auto&& fut: futVec) fut.get();  

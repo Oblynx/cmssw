@@ -1,5 +1,26 @@
 #include "RecoLocalTracker/SubCollectionProducers/interface/ClusterSummaryProducer.h"
 
+#include <iostream>
+#include <vector>
+#include <future>
+#include <cmath>
+#include "FWCore/ServiceRegistry/interface/Service.h"
+#include "FWCore/Services/interface/cudaService_TBBQueueBlocking.h"
+
+extern __global__ void simpleTaskKernel(unsigned meanExp, float* cls,
+                                        float* clx, float* cly);
+#define TOLERANCEorig 1e-5
+#define CPPUNIT_ASSERT_DOUBLES_EQUAL(expected,actual,delta)   \
+  ({                                                          \
+    if (abs((expected)-(actual)) > (delta)){                  \
+      std::cout << "ASSERTION failed\n"                       \
+                << "Expected: "<<(expected)<<"\t"             \
+                << "Actual: "<<(actual)<<"\t"                 \
+                << "Delta: "<<(delta)<<"\n\n";                \
+      break;                                                  \
+    }                                                         \
+  })
+
 ClusterSummaryProducer::ClusterSummaryProducer(const edm::ParameterSet& iConfig)
   : doStrips(iConfig.getParameter<bool>("doStrips")),
     doPixels(iConfig.getParameter<bool>("doPixels")),
@@ -47,6 +68,7 @@ ClusterSummaryProducer::ClusterSummaryProducer(const edm::ParameterSet& iConfig)
 void
 ClusterSummaryProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetup)
 {
+   std::cout << "[ClSumProd]: Entered produce\n";
    using namespace edm;
    cCluster.reset();
    std::vector<bool> selectedVector(selectors.size(),false);
@@ -65,6 +87,62 @@ ClusterSummaryProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetu
      }
    };
 
+   //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+   // Test code transplanted from: FWCore/Services/test/test_cudaService.cppunit.cu
+   // Initial CPU code from: RecoLocalTracker/SubCollectionProducers/src/JetCoreClusterSplitter.cc
+   // JetCoreClusterSplitter::fittingSplit
+    std::cout<< "[ClSumProd]: Starting integration test...\n\n";
+    edm::Service<edm::service::CudaService> cudaService;
+    std::random_device rd;
+    std::mt19937 mt(rd());
+    std::uniform_real_distribution<float> randFl(0, 1000);
+    std::vector<std::future<void>> futVec(3);
+    unsigned meanExp= 1000;
+    cudaPointer<float> cls(meanExp), clx(meanExp),
+                       cly(meanExp);
+    //Initialize
+    std::cout<< "[ClSumProd]: Initializing data...\n";
+    futVec[0]= cudaService->getFuture([&] {
+      for(unsigned i=0; i<meanExp; i++) cls.p[i]= randFl(mt); });
+    futVec[1]= cudaService->getFuture([&] {
+      for(unsigned i=0; i<meanExp; i++) clx.p[i]= randFl(mt); });
+    futVec[2]= cudaService->getFuture([&] {
+      for(unsigned i=0; i<meanExp; i++) cly.p[i]= randFl(mt); });
+    for(auto&& fut: futVec) fut.get();
+
+    //Calculate results on CPU
+    std::vector<float> cpuCls(meanExp), cpuClx(meanExp), cpuCly(meanExp);
+    for (unsigned i= 0; i < meanExp; i++)
+    {
+      if (cls.p[i] != 0) {
+        cpuClx[i]= clx.p[i]/cls.p[i];
+        cpuCly[i]= cly.p[i]/cls.p[i];
+      }
+      cpuCls[i]= 0;
+    }
+    //Calculate results on GPU
+    auto execPol= cudaService->configureLaunch(meanExp, simpleTaskKernel);
+    std::cout<< "[ClSumProd]: Launching on GPU...\n";
+    auto GPUResult= cudaService->cudaLaunchManaged(execPol, simpleTaskKernel, meanExp,
+                                             cls, clx, cly);
+    GPUResult.get();
+
+    futVec[0]= cudaService->getFuture([&] {
+      for(unsigned i=0; i<meanExp; i++)
+        CPPUNIT_ASSERT_DOUBLES_EQUAL(cpuCls[i], cls.p[i], TOLERANCEorig);
+    });
+    futVec[1]= cudaService->getFuture([&] {
+      for(unsigned i=0; i<meanExp; i++)
+        CPPUNIT_ASSERT_DOUBLES_EQUAL(cpuCls[i], cls.p[i], TOLERANCEorig);
+    });
+    futVec[2]= cudaService->getFuture([&] {
+      for(unsigned i=0; i<meanExp; i++)
+        CPPUNIT_ASSERT_DOUBLES_EQUAL(cpuCls[i], cls.p[i], TOLERANCEorig);
+    });
+    for(auto&& fut: futVec) fut.get();  
+    std::cout <<clx.p[100];
+    std::cout<< "[ClSumProd]: Integration test complete!\n";
+   //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
    //===================++++++++++++========================
    //                   For SiStrips
    //===================++++++++++++========================
@@ -80,7 +158,7 @@ ClusterSummaryProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetu
        }
      }
    }
-
+   
    //===================++++++++++++========================
    //                   For SiPixels
    //===================++++++++++++========================

@@ -13,7 +13,5 @@ jetCoreClusterSplitter = cms.EDProducer("JetCoreClusterSplitter",
            forceYError  = cms.double(150),
            fractionalWidth  = cms.double(0.4),
            chargePerUnit  = cms.double(2000),
-           centralMIPCharge  = cms.double(26000),
-	
-
-    )
+           centralMIPCharge  = cms.double(26000),	
+)

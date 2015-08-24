@@ -98,6 +98,7 @@ bool SortPixels(const SiPixelCluster::Pixel& i,
 
 void JetCoreClusterSplitter::produce(edm::Event& iEvent,
                                      const edm::EventSetup& iSetup) {
+  std::cout << "[EDProducer]: Entered produce\n";
   using namespace edm;
   edm::ESHandle<GlobalTrackingGeometry> geometry;
   iSetup.get<GlobalTrackingGeometryRecord>().get(geometry);
@@ -278,7 +279,6 @@ std::vector<SiPixelCluster> JetCoreClusterSplitter::fittingSplit(
     return output;
   }
 
-  edm::Service<edm::service::CudaService> cudaService;
   std::vector<float> clx(meanExp);
   std::vector<float> cly(meanExp);
   std::vector<float> cls(meanExp);
@@ -437,28 +437,29 @@ std::vector<SiPixelCluster> JetCoreClusterSplitter::fittingSplit(
       cls[clusterForPixel[pixel_index]] += pixels[pixel_index].second.adc;
     }
 
-    std::cout << "@@@@@@@\n@@@@@@\n@@@@@@@\n@@@@@@@@\n@@@@@@@@";
-    cudaPointer<float> CUcls(cudaService, cls), CUclx(cudaService, clx),
-                       CUcly(cudaService, cly);
-    auto execPol= cudaService->configureLaunch(meanExp, simpleTaskKernel);
-    auto result= cudaService->cudaLaunchManaged(execPol, simpleTaskKernel, meanExp,
-                                                CUcls, CUclx, CUcly);
-    cls= CUcls.getVec(true), clx= CUclx.getVec(true), cly= CUcly.getVec(true);
-    std::cout << "@@@@@@@\n@@@@@@\n@@@@@@@\n@@@@@@@@\n@@@@@@@@";
+    // std::cout << "@@@@@@@\n@@@@@@\n@@@@@@@\n@@@@@@@@\n@@@@@@@@";
+    // edm::Service<edm::service::CudaService> cudaService;
+    // cudaPointer<float> CUcls(cudaService, cls), CUclx(cudaService, clx),
+    //                    CUcly(cudaService, cly);
+    // auto execPol= cudaService->configureLaunch(meanExp, simpleTaskKernel);
+    // auto result= cudaService->cudaLaunchManaged(execPol, simpleTaskKernel, meanExp,
+    //                                             CUcls, CUclx, CUcly);
+    // cls= CUcls.getVec(true), clx= CUclx.getVec(true), cly= CUcly.getVec(true);
+    // std::cout << "@@@@@@@\n@@@@@@\n@@@@@@@\n@@@@@@@@\n@@@@@@@@";
 
     /* Replaced by GPU kernel */
-    // for (unsigned int subcluster_index = 0;
-    //      subcluster_index < meanExp; subcluster_index++) {
-    //   if (cls[subcluster_index] != 0) {
-    //     clx[subcluster_index] /= cls[subcluster_index];
-    //     cly[subcluster_index] /= cls[subcluster_index];
-    //   }
-    //   if (verbose)
-    //     std::cout << "Center for cluster " << subcluster_index << " x,y "
-    //               << clx[subcluster_index] << " "
-    //               << cly[subcluster_index] << std::endl;
-    //   cls[subcluster_index] = 0;
-    // }
+    for (unsigned int subcluster_index = 0;
+         subcluster_index < meanExp; subcluster_index++) {
+      if (cls[subcluster_index] != 0) {
+        clx[subcluster_index] /= cls[subcluster_index];
+        cly[subcluster_index] /= cls[subcluster_index];
+      }
+      if (verbose)
+        std::cout << "Center for cluster " << subcluster_index << " x,y "
+                  << clx[subcluster_index] << " "
+                  << cly[subcluster_index] << std::endl;
+      cls[subcluster_index] = 0;
+    }
 
   }
   if (verbose) std::cout << "maxstep " << remainingSteps << std::endl;

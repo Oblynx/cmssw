@@ -16,14 +16,14 @@ __global__ void simpleTask_kernel(unsigned meanExp, float* cls, float* clx, floa
 //@@@@@@@@@@@@@@@@@@@@@@@@@@
 
 // <name>_auto(launchSize, ...) (1D)
-void simpleTask_auto(int launchSize, unsigned meanExp, float* cls, float* clx, float* cly)
+void simpleTask_auto(unsigned& launchSize, unsigned meanExp, float* cls, float* clx, float* cly)
 {
   auto execPol= cudaConfig::configure(true, launchSize, simpleTask_kernel);
   simpleTask_kernel<<<execPol.getGridSize(), execPol.getBlockSize()>>>(
                   meanExp, cls, clx, cly);
 }
 // <name>(execPol, ...)
-void simpleTask(const cudaConfig::ExecutionPolicy execPol,
+void simpleTask_man(const cudaConfig::ExecutionPolicy& execPol,
                     unsigned meanExp, float* cls, float* clx, float* cly)
 {
   simpleTask_kernel<<<execPol.getGridSize(), execPol.getBlockSize()>>>(

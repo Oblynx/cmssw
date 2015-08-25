@@ -69,7 +69,7 @@ namespace edm{namespace service{
     //!< @brief Schedule task and get its future handle
     template<typename F, typename... Args>
     inline std::future<typename std::result_of<F(Args...)>::type>
-      getFuture(F&& f, Args&&... args)
+      schedule(F&& f, Args&&... args)
     {
       using packaged_task_t = std::packaged_task<typename std::result_of<F(Args...)>::type ()>;
 
@@ -86,9 +86,12 @@ namespace edm{namespace service{
     inline std::future<cudaError_t>
       cudaLaunchManaged(const cudaConfig::ExecutionPolicy& execPol, F&& f, Args&&... args);
 
-    template<typename F, typename... Args>
+    template<typename F, typename... Args, typename LaunchType, typename
+        std::enable_if< std::is_same<unsigned, typename std::remove_reference<LaunchType>::type>
+        ::value || std::is_same<cudaConfig::ExecutionPolicy, typename std::remove_reference<
+        LaunchType>::type>::value, int >::type= 0>
     inline std::future<cudaError_t>
-      cudaLaunchAuto(int launchSize, F&& autowrap, Args&&... args);
+      cudaLaunch(LaunchType&& launchParam, F&& kernelWrap, Args&&... args);
     //!< @brief Clears tasks queue
     void clearTasks(){ tasks_.clear(); }
     virtual ~CudaService(){
@@ -125,7 +128,7 @@ namespace edm{namespace service{
   {
     if (!cudaDevCount_){
       std::cout<<"[CudaService]: GPU not available\n";
-      return getFuture([]()->cudaError_t {
+      return schedule([]()->cudaError_t {
         return cudaErrorNoDevice;
       });
     }
@@ -153,11 +156,14 @@ namespace edm{namespace service{
     return resultFut;
   }
 
-  template<typename F, typename... Args>
-  inline std::future<cudaError_t> CudaService::cudaLaunchAuto(int launchSize, F&& autowrap, Args&&... args){
+  template<typename F, typename... Args, typename LaunchType, typename
+    std::enable_if< std::is_same<unsigned, typename std::remove_reference<LaunchType>::type>
+      ::value || std::is_same<cudaConfig::ExecutionPolicy, typename std::remove_reference<
+      LaunchType>::type>::value, int >::type>
+  inline std::future<cudaError_t> CudaService::cudaLaunch(LaunchType&& launchParam, F&& kernelWrap, Args&&... args){
     if (!cudaDevCount_){
       std::cout<<"[CudaService]: GPU not available\n";
-      return getFuture([]()->cudaError_t {
+      return schedule([]()->cudaError_t {
         return cudaErrorNoDevice;
       });
     }
@@ -169,7 +175,7 @@ namespace edm{namespace service{
       cudaError_t status;
       // If device is not available, retry kernel up to maxKernelAttempts_ times
       do{
-        autowrap(launchSize, utils::passKernelArg<Args>(args)...);
+        kernelWrap(launchParam, utils::passKernelArg<Args>(args)...);
         attempt++;
         status= cudaStreamSynchronize(cudaStreamPerThread);
         if (status!= cudaSuccess) std::this_thread::sleep_for(

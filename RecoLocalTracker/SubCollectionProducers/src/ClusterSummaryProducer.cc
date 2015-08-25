@@ -24,8 +24,15 @@ int testSuccess= true;
   }while(0)
 
 
-extern void simpleTask_auto(int launchSize, unsigned meanExp,
+extern void simpleTask_auto(unsigned& launchSize, unsigned meanExp,
                             float* cls, float* clx, float* cly);
+extern void simpleTask_man(const cudaConfig::ExecutionPolicy& execPol,
+                          unsigned meanExp, float* cls, float* clx, float* cly);
+extern __global__ void simpleTask_kernel(unsigned meanExp, float* cls,
+                                         float* clx, float* cly);
+namespace cudaConfig{
+extern cudaConfig::ExecutionPolicy configure(bool cudaStatus, int totalThreads, const void* f);
+}
 
 
 ClusterSummaryProducer::ClusterSummaryProducer(const edm::ParameterSet& iConfig)
@@ -109,11 +116,11 @@ ClusterSummaryProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetu
                        cly(meanExp);
     //Initialize
     std::cout<< "[ClSumProd]: Initializing data...\n";
-    futVec[0]= cudaService->getFuture([&] {
+    futVec[0]= cudaService->schedule([&] {
       for(unsigned i=0; i<meanExp; i++) cls.p[i]= randFl(mt); });
-    futVec[1]= cudaService->getFuture([&] {
+    futVec[1]= cudaService->schedule([&] {
       for(unsigned i=0; i<meanExp; i++) clx.p[i]= randFl(mt); });
-    futVec[2]= cudaService->getFuture([&] {
+    futVec[2]= cudaService->schedule([&] {
       for(unsigned i=0; i<meanExp; i++) cly.p[i]= randFl(mt); });
     for(auto&& fut: futVec) fut.get();
 
@@ -127,22 +134,29 @@ ClusterSummaryProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetu
       }
       cpuCls[i]= 0;
     }
-    std::this_thread::sleep_for(std::chrono::seconds(1));
     //Calculate results on GPU
     std::cout<< "[ClSumProd]: Launching on GPU...\n";
-    auto GPUResult= cudaService->cudaLaunchAuto(meanExp, simpleTask_auto, meanExp,
+    //#define AUTO_TEST
+    #ifdef AUTO_TEST
+    auto GPUResult= cudaService->cudaLaunch(meanExp, simpleTask_auto, meanExp,
                                                 cls, clx, cly);
+    #else
+    auto execPol= cudaConfig::configure(cudaService->cudaStatus(), meanExp,
+                                        (void*)simpleTask_kernel);
+    auto GPUResult= cudaService->cudaLaunch(execPol, simpleTask_man, meanExp,
+                                               cls, clx, cly);
+    #endif
     GPUResult.get();
 
-    futVec[0]= cudaService->getFuture([&] {
+    futVec[0]= cudaService->schedule([&] {
       for(unsigned i=0; i<meanExp; i++)
         CPPUNIT_ASSERT_DOUBLES_EQUAL(cpuCls[i], cls.p[i], TOLERANCEorig);
     });
-    futVec[1]= cudaService->getFuture([&] {
+    futVec[1]= cudaService->schedule([&] {
       for(unsigned i=0; i<meanExp; i++)
         CPPUNIT_ASSERT_DOUBLES_EQUAL(cpuCls[i], cls.p[i], TOLERANCEorig);
     });
-    futVec[2]= cudaService->getFuture([&] {
+    futVec[2]= cudaService->schedule([&] {
       for(unsigned i=0; i<meanExp; i++)
         CPPUNIT_ASSERT_DOUBLES_EQUAL(cpuCls[i], cls.p[i], TOLERANCEorig);
     });

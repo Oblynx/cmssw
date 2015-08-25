@@ -51,7 +51,7 @@ public:
   void basicUseTest();
   //!< @brief Test behaviour if the task itself enqueues another task in same pool
   void passServiceArgTest();
-  //!< @brief Test scheduling many threads that launch CUDA kernels (pool.getFuture)
+  //!< @brief Test scheduling many threads that launch CUDA kernels (CudaService->schedule)
   void basicCUDATest();
   //!< @brief Test auto launch cuda kernel with its arguments in managed memory
   void CUDAAutolaunchManagedTest();
@@ -84,19 +84,22 @@ private:
 ///Registration of the test suite so that the runner can find it
 CPPUNIT_TEST_SUITE_REGISTRATION(TestCudaService);
 extern void cudaTaskImplement(int n, int i, const float* din, int times);
+extern void long_auto(int launchSize, const int n, const int times, const float* in, float* out);
+extern void long_man(const cudaConfig::ExecutionPolicy execPol, const int n,
+                     const int times, const float* in, float* out);
 /* EXTERN kernel definitions */
 
 /*$$$---TESTS BEGIN---$$$*/
 
 void TestCudaService::basicUseTest(){
   cout<<"Starting basic test...\n";
-  (*cuSerPtr)->getFuture([]() {cout<<"Empty task\n";}).get();
+  (*cuSerPtr)->schedule([]() {cout<<"Empty task\n";}).get();
   vector<future<void>> futures;
   const int N= 30;
   sum= 0;
   // spawn N threads:
   for (int i=0; i<N; ++i)
-    futures.emplace_back((*cuSerPtr)->getFuture(&TestCudaService::print_id, this,i+1));
+    futures.emplace_back((*cuSerPtr)->schedule(&TestCudaService::print_id, this,i+1));
   go();
 
   for (auto& future: futures) future.get();
@@ -108,20 +111,20 @@ void TestCudaService::basicUseTest(){
 void TestCudaService::passServiceArgTest(){
   cout<<"Starting passServiceArg test...\n"
       <<"(requires service with >1 thread)\n";
-  (*cuSerPtr)->getFuture([&]() {
+  (*cuSerPtr)->schedule([&]() {
     cout<<"Recursive enqueue #1\n";
     ServiceRegistry::Operate operate(serviceToken);
-    (*cuSerPtr)->getFuture([]() {cout<<"Pool service ref captured\n";}).get();
+    (*cuSerPtr)->schedule([]() {cout<<"Pool service ref captured\n";}).get();
   }).get();
-  (*cuSerPtr)->getFuture([this](const Service<service::CudaService> poolArg){
+  (*cuSerPtr)->schedule([this](const Service<service::CudaService> poolArg){
     cout<<"Recursive enqueue #2\n";
     ServiceRegistry::Operate operate(serviceToken);
-    poolArg->getFuture([]() {cout<<"Pool service passed as arg (Service<>->val)\n";}).get();
+    poolArg->schedule([]() {cout<<"Pool service passed as arg (Service<>->val)\n";}).get();
   }, *cuSerPtr).get();
-  (*cuSerPtr)->getFuture([this](const Service<service::CudaService>& poolArg){
+  (*cuSerPtr)->schedule([this](const Service<service::CudaService>& poolArg){
     cout<<"Recursive enqueue #3\n";
     ServiceRegistry::Operate operate(serviceToken);
-    poolArg->getFuture([]() {cout<<"Pool service passed as arg (Service<>->cref)\n";}).get();
+    poolArg->schedule([]() {cout<<"Pool service passed as arg (Service<>->cref)\n";}).get();
   }, std::cref(*cuSerPtr)).get();
 }
 void TestCudaService::basicCUDATest(){
@@ -139,7 +142,7 @@ void TestCudaService::basicCUDATest(){
 
   // spawn N threads
   for (int i=0; i<N; ++i){
-    futures.emplace_back((*cuSerPtr)->getFuture(&TestCudaService::cudaTask, this,
+    futures.emplace_back((*cuSerPtr)->schedule(&TestCudaService::cudaTask, this,
                          n, i, din, 2));
   }
   for (auto& future: futures) future.get();
@@ -150,7 +153,6 @@ void TestCudaService::CUDAAutolaunchManagedTest(){
     cout<<"GPU not available, skipping test.\n";
     return;
   }
-
   cout<<"Starting CUDA autolaunch (managed) test...\n";
   float *in, *out;
   const int n= 10000000, times= 1000;
@@ -160,9 +162,7 @@ void TestCudaService::CUDAAutolaunchManagedTest(){
 
   cout<<"Launching auto config...\n";
   // Auto launch config
-  cudaConfig::ExecutionPolicy execPol(cudaConfig::configure((*cuSerPtr)->cudaStatus(),
-                                                            n, longKernel));
-  (*cuSerPtr)->cudaLaunchManaged(execPol, longKernel, n,times,in,out).get();
+  (*cuSerPtr)->cudaLaunchAuto(n, long_auto, n,times,in,out).get();
   for(int i=0; i<n; i++) if (abs(times*in[i]-out[i])>TOLERANCEmul){
     cout<<"ERROR: i="<<i<<'\n';
     CPPUNIT_ASSERT_DOUBLES_EQUAL(times*in[i], out[i], TOLERANCEmul);
@@ -171,7 +171,7 @@ void TestCudaService::CUDAAutolaunchManagedTest(){
   cout<<"Launching manual config...\n";
   // Manual launch config
   execPol= cudaConfig::ExecutionPolicy(320, (n-1+320)/320);
-  (*cuSerPtr)->cudaLaunchManaged(execPol, longKernel, n,times,in,out).get();
+  (*cuSerPtr)->cudaLaunchMan(execPol, long_man, n,times,in,out).get();
   for(int i=0; i<n; i++) if (abs(times*in[i]-out[i])>TOLERANCEmul){
     cout<<"ERROR: i="<<i<<'\n';
     CPPUNIT_ASSERT_DOUBLES_EQUAL(times*in[i], out[i], TOLERANCEmul);
@@ -277,7 +277,7 @@ void TestCudaService::timeBenchmarkTask(){
     //Assign [threadN] tasks and wait for results
     start = chrono::steady_clock::now();
     for(register int thr=0; thr<threadN; thr++)
-      futVec[thr]= (*cuSerPtr)->getFuture([] (){
+      futVec[thr]= (*cuSerPtr)->schedule([] (){
         for (register short k=0; k<5; k++)
           cout<<"";
       });
@@ -300,7 +300,7 @@ void TestCudaService::timeBenchmarkTask(){
     //Assign [threadN] tasks and wait for results
     start = chrono::steady_clock::now();
     for(register int thr=0; thr<threadN; thr++)
-      futVec[thr]= (*cuSerPtr)->getFuture([] (){
+      futVec[thr]= (*cuSerPtr)->schedule([] (){
         for (register short k=0; k<5; k++)
           cout<<"";
       });
@@ -374,11 +374,11 @@ void TestCudaService::originalKernelTest(){
   cudaPointer<float> cls(meanExp), clx(meanExp),
                      cly(meanExp);
   //Initialize
-  futVec[0]= (*cuSerPtr)->getFuture([&] {
+  futVec[0]= (*cuSerPtr)->schedule([&] {
     for(unsigned i=0; i<meanExp; i++) cls.p[i]= randFl(mt); });
-  futVec[1]= (*cuSerPtr)->getFuture([&] {
+  futVec[1]= (*cuSerPtr)->schedule([&] {
     for(unsigned i=0; i<meanExp; i++) clx.p[i]= randFl(mt); });
-  futVec[2]= (*cuSerPtr)->getFuture([&] {
+  futVec[2]= (*cuSerPtr)->schedule([&] {
     for(unsigned i=0; i<meanExp; i++) cly.p[i]= randFl(mt); });
   for(auto&& fut: futVec) fut.get();
 
@@ -399,15 +399,15 @@ void TestCudaService::originalKernelTest(){
                                            cls, clx, cly);
   result.get();
 
-  futVec[0]= (*cuSerPtr)->getFuture([&] {
+  futVec[0]= (*cuSerPtr)->schedule([&] {
     for(unsigned i=0; i<meanExp; i++)
       CPPUNIT_ASSERT_DOUBLES_EQUAL(cpuCls[i], cls.p[i], TOLERANCEorig);
   });
-  futVec[1]= (*cuSerPtr)->getFuture([&] {
+  futVec[1]= (*cuSerPtr)->schedule([&] {
     for(unsigned i=0; i<meanExp; i++)
       CPPUNIT_ASSERT_DOUBLES_EQUAL(cpuCls[i], cls.p[i], TOLERANCEorig);
   });
-  futVec[2]= (*cuSerPtr)->getFuture([&] {
+  futVec[2]= (*cuSerPtr)->schedule([&] {
     for(unsigned i=0; i<meanExp; i++)
       CPPUNIT_ASSERT_DOUBLES_EQUAL(cpuCls[i], cls.p[i], TOLERANCEorig);
   });

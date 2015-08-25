@@ -1,6 +1,5 @@
 // Service to test
 #include "FWCore/Services/interface/cudaService_TBBQueueBlocking.h"
-#include "FWCore/Services/interface/utils/cuda_launch_configuration.cuh"
 
 // std
 #include <iostream>
@@ -81,12 +80,11 @@ private:
   unique_ptr<ServiceRegistry::Operate> operate;
   unique_ptr<Service<service::CudaService>> cuSerPtr;
 };
+
 ///Registration of the test suite so that the runner can find it
 CPPUNIT_TEST_SUITE_REGISTRATION(TestCudaService);
-__global__ void longKernel(const int n, const int times, const float* in, float* out);
-__global__ void matAddKernel(int m, int n, const float* __restrict__ A, 
-                              const float* __restrict__ B, float* __restrict__ C);
-__global__ void originalKernel(unsigned meanExp, float* cls, float* clx, float* cly);
+extern void cudaTaskImplement(int n, int i, const float* din, int times);
+/* EXTERN kernel definitions */
 
 /*$$$---TESTS BEGIN---$$$*/
 
@@ -103,8 +101,8 @@ void TestCudaService::basicUseTest(){
 
   for (auto& future: futures) future.get();
   cout << "\n[basicUseTest] DONE, sum= "<<sum<<"\n";
-	for(int i=0; i<N; i++)
-		sum-= i+1;
+  for(int i=0; i<N; i++)
+    sum-= i+1;
   CPPUNIT_ASSERT_EQUAL(sum.load(), 0l);
 }
 void TestCudaService::passServiceArgTest(){
@@ -444,40 +442,6 @@ void TestCudaService::setUp(){
 }
 
 //~~ Functions only used by some tests ~~//
-__global__ void longKernel(const int n, const int times, const float* in, float* out)
-{
-  int x= blockIdx.x*blockDim.x + threadIdx.x;
-  if (x < n){
-    out[x]= 0;
-    for(int i=0; i<times; i++){
-      out[x]+= in[x];
-    }
-  }
-}
-__global__ void matAddKernel(int m, int n, const float* __restrict__ A, 
-                              const float* __restrict__ B, float* __restrict__ C)
-{
-  int x= blockIdx.x*blockDim.x + threadIdx.x;
-  int y= blockIdx.y*blockDim.y + threadIdx.y;
-
-  // ### Difference between manual and automatic kernel grid:
-  if (x<n && y<m)
-    C[y*n+x]= A[y*n+x]+B[y*n+x];
-  //if (y*n+x < n*m)
-    //C[y*n+x]= A[y*n+x]+B[y*n+x];
-}
-__global__ void originalKernel(unsigned meanExp, float* cls, float* clx, float* cly)
-{
-  int i= blockDim.x*blockIdx.x+threadIdx.x;
-  if(i<meanExp){
-    if (cls[i] != 0){
-      clx[i] /= cls[i];
-      cly[i] /= cls[i];
-    }
-    cls[i]= 0;
-  }
-}
-
 void TestCudaService::print_id(int id) {
   unique_lock<mutex> lck(mtx);
   while (!ready) cv.wait(lck);
@@ -491,14 +455,5 @@ void TestCudaService::go() {
   cv.notify_all();
 }
 void TestCudaService::cudaTask(int n, int i, const float* din, int times){
-  float *dout;
-  cudaMalloc((void **) &dout, n*sizeof(float));
-  dim3 grid((n-1)/BLOCK_SIZE/BLOCK_SIZE+1);
-  dim3 block(BLOCK_SIZE*BLOCK_SIZE);
-  longKernel<<<grid,block>>>(n, times, din, dout);
-  cudaStreamSynchronize(cudaStreamPerThread);
-  float out;
-  cudaMemcpy(&out, dout+i, 1*sizeof(float), cudaMemcpyDeviceToHost);
-  cout << "GPU::" << out << "\t";
-  cudaFree(dout);
+  cudaTaskImplement(n,i,din,times);
 }

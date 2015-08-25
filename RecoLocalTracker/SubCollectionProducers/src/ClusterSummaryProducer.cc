@@ -3,23 +3,30 @@
 #include <iostream>
 #include <vector>
 #include <future>
+#include <thread>
+#include <chrono>
 #include <cmath>
 #include "FWCore/ServiceRegistry/interface/Service.h"
 #include "FWCore/Services/interface/cudaService_TBBQueueBlocking.h"
 
-extern __global__ void simpleTaskKernel(unsigned meanExp, float* cls,
-                                        float* clx, float* cly);
+int testSuccess= true;
 #define TOLERANCEorig 1e-5
 #define CPPUNIT_ASSERT_DOUBLES_EQUAL(expected,actual,delta)   \
-  ({                                                          \
+  do{                                                         \
     if (abs((expected)-(actual)) > (delta)){                  \
       std::cout << "ASSERTION failed\n"                       \
                 << "Expected: "<<(expected)<<"\t"             \
                 << "Actual: "<<(actual)<<"\t"                 \
                 << "Delta: "<<(delta)<<"\n\n";                \
+      testSuccess= false;                                     \
       break;                                                  \
     }                                                         \
-  })
+  }while(0)
+
+
+extern void simpleTask_auto(int launchSize, unsigned meanExp,
+                            float* cls, float* clx, float* cly);
+
 
 ClusterSummaryProducer::ClusterSummaryProducer(const edm::ParameterSet& iConfig)
   : doStrips(iConfig.getParameter<bool>("doStrips")),
@@ -97,7 +104,7 @@ ClusterSummaryProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetu
     std::mt19937 mt(rd());
     std::uniform_real_distribution<float> randFl(0, 1000);
     std::vector<std::future<void>> futVec(3);
-    unsigned meanExp= 1000;
+    unsigned meanExp= 10;
     cudaPointer<float> cls(meanExp), clx(meanExp),
                        cly(meanExp);
     //Initialize
@@ -120,11 +127,11 @@ ClusterSummaryProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetu
       }
       cpuCls[i]= 0;
     }
+    std::this_thread::sleep_for(std::chrono::seconds(1));
     //Calculate results on GPU
-    auto execPol= cudaService->configureLaunch(meanExp, simpleTaskKernel);
     std::cout<< "[ClSumProd]: Launching on GPU...\n";
-    auto GPUResult= cudaService->cudaLaunchManaged(execPol, simpleTaskKernel, meanExp,
-                                             cls, clx, cly);
+    auto GPUResult= cudaService->cudaLaunchAuto(meanExp, simpleTask_auto, meanExp,
+                                                cls, clx, cly);
     GPUResult.get();
 
     futVec[0]= cudaService->getFuture([&] {
@@ -139,9 +146,9 @@ ClusterSummaryProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetu
       for(unsigned i=0; i<meanExp; i++)
         CPPUNIT_ASSERT_DOUBLES_EQUAL(cpuCls[i], cls.p[i], TOLERANCEorig);
     });
-    for(auto&& fut: futVec) fut.get();  
-    std::cout <<clx.p[100];
-    std::cout<< "[ClSumProd]: Integration test complete!\n";
+    for(auto&& fut: futVec) fut.get();
+    if (testSuccess) std::cout<< "\n[ClSumProd]: --> PASS Integration test PASS!!!\n\n\n";
+    else std::cout<< "\n[ClSumProd]: --> FAIL Integration test FAIL!!!\n\n\n";
    //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
    //===================++++++++++++========================
    //                   For SiStrips

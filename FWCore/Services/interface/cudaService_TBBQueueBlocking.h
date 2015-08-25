@@ -36,11 +36,10 @@ freely, subject to the following restrictions:
 #include <memory>
 #include <functional>
 #include <stdexcept>
-#include <cuda_runtime_api.h>
+#include <cuda_runtime.h>
 
 #include <tbb/concurrent_queue.h>
 
-#include "utils/cuda_launch_configuration.h"
 #include "utils/cuda_execution_policy.h"
 #include "utils/cuda_pointer.h"
 
@@ -82,24 +81,19 @@ namespace edm{namespace service{
       return resultFut;
     }
     // Configure execution policy before launch!
-    //!< @brief Launch kernel function with args
+    //!< @brief !ONLY .cu FILES! Launch kernel function with args
     template<typename F, typename... Args>
     inline std::future<cudaError_t>
       cudaLaunchManaged(const cudaConfig::ExecutionPolicy& execPol, F&& f, Args&&... args);
 
+    template<typename F, typename... Args>
+    inline std::future<cudaError_t>
+      cudaLaunchAuto(int launchSize, F&& autowrap, Args&&... args);
     //!< @brief Clears tasks queue
     void clearTasks(){ tasks_.clear(); }
     virtual ~CudaService(){
       std::cout << "[CudaService]: ---| Destroying service |---\n";
       stopWorkers();
-    }
-
-    template<typename F>
-    cudaConfig::ExecutionPolicy configureLaunch(int totalThreads, F&& f){
-      cudaConfig::ExecutionPolicy execPol;
-      if (cudaStatus())
-        checkCuda(cudaConfig::configure(execPol, std::forward<F>(f), totalThreads));
-      return execPol;
     }
     
     bool cudaStatus() const { return cudaDevCount_ > 0; }
@@ -134,7 +128,6 @@ namespace edm{namespace service{
       return getFuture([]()->cudaError_t {
         return cudaErrorNoDevice;
       });
-      //throw new std::runtime_error("No gpu available\n");
     }
     
     using packaged_task_t = std::packaged_task<cudaError_t()>;
@@ -160,7 +153,36 @@ namespace edm{namespace service{
     return resultFut;
   }
 
-  // The other non-template methods are defined in the .cc file
+  template<typename F, typename... Args>
+  inline std::future<cudaError_t> CudaService::cudaLaunchAuto(int launchSize, F&& autowrap, Args&&... args){
+    if (!cudaDevCount_){
+      std::cout<<"[CudaService]: GPU not available\n";
+      return getFuture([]()->cudaError_t {
+        return cudaErrorNoDevice;
+      });
+    }
+    
+    using packaged_task_t = std::packaged_task<cudaError_t()>;
+    std::shared_ptr<packaged_task_t> task(new packaged_task_t([&] ()-> cudaError_t
+    {
+      int attempt= 0;
+      cudaError_t status;
+      // If device is not available, retry kernel up to maxKernelAttempts_ times
+      do{
+        autowrap(launchSize, utils::passKernelArg<Args>(args)...);
+        attempt++;
+        status= cudaStreamSynchronize(cudaStreamPerThread);
+        if (status!= cudaSuccess) std::this_thread::sleep_for(
+                                              std::chrono::microseconds(50));
+      }while(status == cudaErrorDevicesUnavailable && attempt < maxKernelAttempts_);
+      return status;
+    }));
+    std::future<cudaError_t> resultFut= task->get_future();
+    tasks_.emplace([task](){ (*task)(); });
+    return resultFut;
+  }
+
+  // The other non-template methods are defined in the .cu file
 }} // namespace edm::service
 
 

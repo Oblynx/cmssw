@@ -18,6 +18,7 @@
 #include <cuda_runtime_api.h>
 //#include <cuda_occupancy.h>
 #include "cuda_execution_policy.h"
+#include <functional>
 
 
 // Convenience function for checking CUDA runtime API results
@@ -35,6 +36,11 @@ inline cudaError_t checkCuda(cudaError_t result)
 
 namespace cudaConfig{
 
+/*template<typename Args...>
+class Autowrap{
+  void operator()()
+};*/
+
 /*size_t availableSharedBytesPerBlock(size_t sharedMemPerMultiprocessor,
                                     size_t sharedSizeBytesStatic,
                                     int blocksPerSM, int smemAllocationUnit)
@@ -44,8 +50,15 @@ namespace cudaConfig{
   return bytes - sharedSizeBytesStatic;    
 }*/
 
+template<typename F>
+inline cudaConfig::ExecutionPolicy configure(bool cudaStatus, int totalThreads, F&& f){
+  cudaConfig::ExecutionPolicy execPol;
+  if(cudaStatus)
+    checkCuda(configurePolicy(execPol, std::forward<F>(f), totalThreads));
+  return execPol;
+}
 template <typename F>
-cudaError_t configure(ExecutionPolicy& p, F&& kernel, int totalThreads= 1,
+inline cudaError_t configurePolicy(ExecutionPolicy& p, F&& kernel, int totalThreads= 1,
                       size_t dynamicSMemSize= 0, int blockSizeLimit= 0)
 {
   int configState = p.getConfigState();
@@ -54,12 +67,8 @@ cudaError_t configure(ExecutionPolicy& p, F&& kernel, int totalThreads= 1,
   int suggestedBlockSize=0, minGridSize=0;
   cudaError_t status= cudaSuccess;
   if ((configState & ExecutionPolicy::BlockSize) == 0) {
-    //Needs NVCC to compile... why?
-    #ifdef __NVCC__
-      status= cudaOccupancyMaxPotentialBlockSize(&minGridSize, &suggestedBlockSize,
-                                               kernel, dynamicSMemSize, blockSizeLimit);
-    #endif
-      minGridSize++;  /*DEBUG*/
+    status= cudaOccupancyMaxPotentialBlockSize(&minGridSize, &suggestedBlockSize,
+                                             kernel, dynamicSMemSize, blockSizeLimit);
     if (status != cudaSuccess) return status;
     p.setBlockSize({static_cast<unsigned>(suggestedBlockSize),1,1});
   }

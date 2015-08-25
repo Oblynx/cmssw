@@ -27,3 +27,14 @@
   <use name="FWCore/Utilities"/>
   <use name="cppunit"/>
 </bin>
+
+<library name="TestCudaService_cudaDefs" file="test_cudaService.cu"/>
+
+<!-- <bin   name="TestCudaService" file="test_cudaService_gcc.cppunit.cc">
+  <lib name="TestCudaService_cudaDefs"/>
+  <use name="FWCore/Services"/>
+  <use name="FWCore/ServiceRegistry"/>
+  <use name="FWCore/PluginManager"/>
+  <use name="FWCore/Utilities"/>
+  <use name="cppunit"/>
+</bin> -->

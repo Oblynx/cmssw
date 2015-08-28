@@ -83,17 +83,17 @@ CPPUNIT_TEST_SUITE_REGISTRATION(TestCudaService);
 
 /* EXTERN kernel definitions */
 __global__ void long_kernel(const int n, const int times, const float* in, float* out);
-void long_auto(unsigned& launchSize, const int n, const int times, const float* in, float* out);
-void long_man(const cuda::ExecutionPolicy& execPol, const int n,
+void long_auto(bool gpu, unsigned& launchSize, const int n, const int times, const float* in, float* out);
+void long_man(bool gpu, const cuda::ExecutionPolicy& execPol, const int n,
                      const int times, const float* in, float* out);
 __global__ void matAdd_kernel(int m, int n, const float* __restrict__ A, 
                               const float* __restrict__ B, float* __restrict__ C);
-void matAdd_auto(unsigned& launchSize, int m, int n, const float* __restrict__ A, 
+void matAdd_auto(bool gpu, unsigned& launchSize, int m, int n, const float* __restrict__ A, 
                             const float* __restrict__ B, float* __restrict__ C);
-void matAdd_man(const cuda::ExecutionPolicy& execPol,int m, int n, const float*
+void matAdd_man(bool gpu, const cuda::ExecutionPolicy& execPol,int m, int n, const float*
               __restrict__ A, const float* __restrict__ B, float* __restrict__ C);
 __global__ void original_kernel(unsigned meanExp, float* cls, float* clx, float* cly);
-void original_man(const cuda::ExecutionPolicy& execPol,
+void original_man(bool gpu, const cuda::ExecutionPolicy& execPol,
                 unsigned meanExp, float* cls, float* clx, float* cly);
 
 /*$$$---TESTS BEGIN---$$$*/

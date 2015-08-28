@@ -1,7 +1,8 @@
 #include "FWCore/Services/interface/utils/cuda_launch_configuration.cuh"
 
 // <name>_kernel(...)
-__global__ void simpleTask_kernel(unsigned meanExp, float* cls, float* clx, float* cly)
+__global__
+void simpleTask_kernel(unsigned meanExp, float* cls, float* clx, float* cly)
 {
   unsigned i= blockDim.x*blockIdx.x+threadIdx.x;
   if(i<meanExp){
@@ -12,20 +13,34 @@ __global__ void simpleTask_kernel(unsigned meanExp, float* cls, float* clx, floa
     cls[i]= 0;
   }
 }
+void simpleTask_CPU(unsigned meanExp, float* cls, float* clx, float* cly)
+{
+  for (unsigned int subcl_idx = 0;
+       subcl_idx < meanExp; subcl_idx++){
+    if (cls[subcl_idx] != 0) {
+      clx[subcl_idx] /= cls[subcl_idx];
+      cly[subcl_idx] /= cls[subcl_idx];
+    }
+    cls[subcl_idx] = 0;
+  }
+}
 
 //@@@@@@@@@@@@@@@@@@@@@@@@@@
 
 // <name>_auto(launchSize, ...) (1D)
-void simpleTask_auto(unsigned& launchSize, unsigned meanExp, float* cls, float* clx, float* cly)
+void simpleTask_auto(bool GPU, unsigned& launchSize,
+                     unsigned meanExp, float* cls, float* clx, float* cly)
 {
+  if(!GPU) simpleTask_CPU(meanExp, cls, clx, cly);
   auto execPol= cuda::AutoConfig()(launchSize, (void*)simpleTask_kernel);
   simpleTask_kernel<<<execPol.getGridSize(), execPol.getBlockSize()>>>(
                   meanExp, cls, clx, cly);
 }
 // <name>(execPol, ...)
-void simpleTask_man(const cuda::ExecutionPolicy& execPol,
+void simpleTask_man(bool GPU, const cuda::ExecutionPolicy& execPol,
                     unsigned meanExp, float* cls, float* clx, float* cly)
 {
+  if(!GPU) simpleTask_CPU(meanExp, cls, clx, cly);
   simpleTask_kernel<<<execPol.getGridSize(), execPol.getBlockSize()>>>(
                     meanExp, cls, clx, cly);
 }

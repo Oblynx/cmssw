@@ -182,20 +182,20 @@ namespace edm{namespace service{
         typename std::remove_reference<LaunchType>::type>::type>::value, int >::type>
   inline std::future<cudaError_t> CudaService::cudaLaunch(LaunchType&& launchParam, F&& kernelWrap, Args&&... args){
     if (!cudaDevCount_){
-      std::cout<<"[CudaService]: GPU not available\n";
-      return schedule([]()->cudaError_t {
+      std::cout<<"[CudaService]: GPU not available. Falling back to CPU.\n";
+      return schedule([&] ()-> cudaError_t {
+        kernelWrap(false, launchParam, utils::passKernelArg<Args>(args)...);
         return cudaErrorNoDevice;
       });
     }
     
     using packaged_task_t = std::packaged_task<cudaError_t()>;
-    std::shared_ptr<packaged_task_t> task(new packaged_task_t([&] ()-> cudaError_t
-    {
+    std::shared_ptr<packaged_task_t> task(new packaged_task_t([&] ()-> cudaError_t{
       int attempt= 0;
       cudaError_t status;
       // If device is not available, retry kernel up to maxKernelAttempts_ times
       do{
-        kernelWrap(launchParam, utils::passKernelArg<Args>(args)...);
+        kernelWrap(true, launchParam, utils::passKernelArg<Args>(args)...);
         attempt++;
         status= cudaStreamSynchronize(cudaStreamPerThread);
         if (status!= cudaSuccess) std::this_thread::sleep_for(

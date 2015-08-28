@@ -20,9 +20,9 @@
     }
 
 
-void simpleTask_auto(unsigned& launchSize, unsigned meanExp,
+void simpleTask_auto(bool gpu, unsigned& launchSize, unsigned meanExp,
                             float* cls, float* clx, float* cly);
-void simpleTask_man(const cuda::ExecutionPolicy& execPol,
+void simpleTask_man(bool gpu, const cuda::ExecutionPolicy& execPol,
                           unsigned meanExp, float* cls, float* clx, float* cly);
 __global__ void simpleTask_kernel(unsigned meanExp, float* cls,
                                          float* clx, float* cly);

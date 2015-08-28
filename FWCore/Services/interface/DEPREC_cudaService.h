@@ -103,7 +103,7 @@ public:
   // Configure execution policy before launch!
   template<typename F, typename... Args>
   inline std::future<typename std::result_of<F(Args...)>::type>
-    cudaLaunchManaged(const cudaConfig::ExecutionPolicy& execPol, F&& f, Args&&... args)
+    cudaLaunchManaged(const cuda::ExecutionPolicy& execPol, F&& f, Args&&... args)
   {
     return getFuture([&](){
       f<<<execPol.getGridSize(), execPol.getBlockSize(),
@@ -114,9 +114,9 @@ public:
     });
   }
   template<typename F>
-  static cudaConfig::ExecutionPolicy configureLaunch(int totalThreads, F&& f){
-    cudaConfig::ExecutionPolicy execPol;
-    checkCuda(cudaConfig::configure(execPol, std::forward<F>(f), totalThreads));
+  static cuda::ExecutionPolicy configureLaunch(int totalThreads, F&& f){
+    cuda::ExecutionPolicy execPol;
+    checkCuda(cuda::autoConfig(execPol, std::forward<F>(f), totalThreads));
     return execPol;
   }
 #else

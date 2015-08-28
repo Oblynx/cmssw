@@ -7,31 +7,10 @@
 #include <type_traits>
 #include <vector>
 
+#include "GPU_presence_static.h"
 
 //!< @class Useful for type identification
 class cudaPtrBase {};
-namespace edm{namespace service{
-  //Forward declaration
-  class CudaService;
-  // Global cuda status_
-  // Set only by CudaService constructor (therefore once, by a single thread)
-  // Read only by cudaPointer instances
-  class CudaStatusStatic{
-  	static bool status_;
-  public:
-    // Set access: only CudaService
-  	template<typename T, typename std::enable_if< std::is_same< CudaService,
-                typename std::remove_reference<typename std::remove_cv<T>::type>
-                    ::type >::value, int >::type= 0>
-  	static void setStatus(T*, bool newStatus){ status_= newStatus; }
-  	// Get access: only cudaPointer
-  	template<typename T, typename std::enable_if< std::is_base_of< cudaPtrBase,
-                typename std::remove_reference<typename std::remove_cv<T>::type>
-                    ::type >::value, int >::type= 0>
-  	static bool getStatus(T*){ return status_; }
-  };
-}}  //namespace edm::service
-
 //!< @class <unique_ptr>-like managed cuda smart pointer. T: non-const, non-ref
 template<typename T>
 class cudaPointer: cudaPtrBase{
@@ -62,12 +41,12 @@ public:
 	//Only call default if on a new thread
 	void attachStream(cudaStream_t stream= cudaStreamPerThread){
 	  attachment= single;
-	  if (cudaStatus()) cudaStreamAttachMemAsync(stream, p, 0, attachment);
+	  if (GPUpresent()) cudaStreamAttachMemAsync(stream, p, 0, attachment);
 	}
 	cudaError_t getErrorState() const { return errorState_; }
 	
 	std::vector<T> getVec(bool release= false);
-	bool cudaStatus() { return edm::service::CudaStatusStatic::getStatus(this); }
+	bool GPUpresent() { return cuda::GPUPresenceStatic::getStatus(this); }
 
 	//public!
 	T* p;
@@ -121,7 +100,7 @@ std::vector<T> cudaPointer<T>::getVec(bool release){
 }
 template<typename T>
 void cudaPointer<T>::allocate(){
-  if (cudaStatus()){
+  if (GPUpresent()){
     static_assert(!std::is_const<T>::value && !std::is_reference<T>::value,
                   "\nCannot allocate cuda managed memory for const-qualified "
                   "or reference types.\nConsult the CUDA C Programming Guide "
@@ -135,7 +114,7 @@ void cudaPointer<T>::allocate(){
 }
 template<typename T>
 void cudaPointer<T>::deallocate(){
-  if (cudaStatus()) errorState_= cudaFree(p);
+  if (GPUpresent()) errorState_= cudaFree(p);
   else if (elementN==1)
     delete p;
   else

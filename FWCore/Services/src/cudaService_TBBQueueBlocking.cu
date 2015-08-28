@@ -3,9 +3,8 @@
 /**$$$~~~~~ CudaService non-template method definitions ~~~~~$$$**/
 namespace edm{namespace service{
 CudaService::CudaService(const edm::ParameterSet& pSet, edm::ActivityRegistry& actR):
-  stop_(false), cudaDevCount_(0)
+  cudaDevCount_(0)
 {
-  beginworking_.clear(); endworking_.test_and_set();
   std::cout<<"[CudaService]: Constructing CudaService\n";
   /**Checking presence of GPU**/
   int deviceCount = 0;
@@ -14,29 +13,30 @@ CudaService::CudaService(const edm::ParameterSet& pSet, edm::ActivityRegistry& a
           // /*!!!*/deviceCount=0;/*!!!*/
   if (error_id == cudaErrorNoDevice || deviceCount == 0){
     std::cout<<"[CudaService]: No device available!\n";
-    cudaDevCount_= 0; CudaStatusStatic::setStatus(this, false);
+    cudaDevCount_= 0; cuda::GPUPresenceStatic::setStatus(this, false);
+    gpuFreeMem_= 0, gpuTotalMem_= 0;
   }else{
-    cudaDevCount_= deviceCount; CudaStatusStatic::setStatus(this, true);
+    cudaDevCount_= deviceCount; cuda::GPUPresenceStatic::setStatus(this, true);
+    size_t gpuFreeMem= 0, gpuTotalMem= 0;
+    cudaMemGetInfo(&gpuFreeMem, &gpuTotalMem);
+    gpuFreeMem_= gpuFreeMem, gpuTotalMem_= gpuTotalMem;
   }
   if (pSet.exists("thread_num"))
     threadNum_= pSet.getParameter<int>("thread_num");
-  
-  actR.watchPostBeginJob(this, &CudaService::startWorkers);
-  actR.watchPostEndJob(this, &CudaService::stopWorkers);
-}
-
-void CudaService::startWorkers()
-{
-  // continue only if !beginworking
-  if (beginworking_.test_and_set()) return;
-
-  size_t gpuFreeMem= 0, gpuTotalMem= 0;
-  if (cudaDevCount_) cudaMemGetInfo(&gpuFreeMem,&gpuTotalMem);
-  gpuFreeMem_= gpuFreeMem, gpuTotalMem_= gpuTotalMem;
   //Default thread number: if (gpu) then (=4*gpu), else (=hardware_concurrency)
   if(!threadNum_)
     threadNum_= (cudaDevCount_)? 4*cudaDevCount_:
                                  std::thread::hardware_concurrency();
+  
+  actR.watchPostBeginJob(this, &ThreadPool::startWorkers);
+  actR.watchPostEndJob(this, &ThreadPool::stopWorkers);
+}
+
+void ThreadPool::startWorkers()
+{
+  // continue only if !beginworking
+  if (beginworking_.test_and_set()) return;
+
   if(!threadNum_) throw std::invalid_argument("[CudaService]: More than zero threads expected");
   workers_.reserve(threadNum_);
   for(; threadNum_; --threadNum_)
@@ -58,7 +58,7 @@ void CudaService::startWorkers()
   endworking_.clear();
 }
 
-void CudaService::stopWorkers()
+void ThreadPool::stopWorkers()
 {
   // continue only if !endworking
   if (endworking_.test_and_set()) return;

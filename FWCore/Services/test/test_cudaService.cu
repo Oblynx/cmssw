@@ -40,28 +40,28 @@ __global__ void original_kernel(unsigned meanExp, float* cls, float* clx, float*
 
 //@@@@@@@@@@@@@@@@
   void long_auto(unsigned& launchSize, const int n, const int times, const float* in, float* out){
-    auto execPol= cudaConfig::configure(true, launchSize, long_kernel);
+    auto execPol= cuda::AutoConfig()(launchSize, (void*)long_kernel);
     long_kernel<<<execPol.getGridSize(), execPol.getBlockSize()>>>(n,times,in,out);
   }
   void matAdd_auto(unsigned& launchSize, int m, int n, const float* __restrict__ A, 
                             const float* __restrict__ B, float* __restrict__ C){
-    auto execPol= cudaConfig::configure(true, launchSize, matAdd_kernel);
+    auto execPol= cuda::AutoConfig()(launchSize, (void*)matAdd_kernel);
     matAdd_kernel<<<execPol.getGridSize(), execPol.getBlockSize()>>>(m,n,A,B,C);
   }
   void original_auto(unsigned& launchSize, unsigned meanExp, float* cls, float* clx, float* cly){
-    auto execPol= cudaConfig::configure(true, launchSize, original_kernel);
+    auto execPol= cuda::AutoConfig()(launchSize, (void*)original_kernel);
     original_kernel<<<execPol.getGridSize(), execPol.getBlockSize()>>>(meanExp,cls,clx,cly);
   }
 //@@@@@@@@@@@@@@@@
-  void long_man(const cudaConfig::ExecutionPolicy& execPol, const int n,
+  void long_man(const cuda::ExecutionPolicy& execPol, const int n,
             const int times, const float* in, float* out){
     long_kernel<<<execPol.getGridSize(), execPol.getBlockSize()>>>(n,times,in,out);
   }
-  void matAdd_man(const cudaConfig::ExecutionPolicy& execPol,int m, int n, const float*
+  void matAdd_man(const cuda::ExecutionPolicy& execPol,int m, int n, const float*
               __restrict__ A, const float* __restrict__ B, float* __restrict__ C){
     matAdd_kernel<<<execPol.getGridSize(), execPol.getBlockSize()>>>(m,n,A,B,C);
   }
-  void original_man(const cudaConfig::ExecutionPolicy& execPol,
+  void original_man(const cuda::ExecutionPolicy& execPol,
                 unsigned meanExp, float* cls, float* clx, float* cly){
     original_kernel<<<execPol.getGridSize(), execPol.getBlockSize()>>>(meanExp,cls,clx,cly);
   }

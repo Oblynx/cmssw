@@ -9,31 +9,23 @@
 #include "FWCore/ServiceRegistry/interface/Service.h"
 #include "FWCore/Services/interface/cudaService_TBBQueueBlocking.h"
 
-int testSuccess= true;
 #define TOLERANCEorig 1e-5
 #define CPPUNIT_ASSERT_DOUBLES_EQUAL(expected,actual,delta)   \
-  do{                                                         \
     if (abs((expected)-(actual)) > (delta)){                  \
       std::cout << "ASSERTION failed\n"                       \
                 << "Expected: "<<(expected)<<"\t"             \
                 << "Actual: "<<(actual)<<"\t"                 \
                 << "Delta: "<<(delta)<<"\n\n";                \
-      testSuccess= false;                                     \
-      exit(1);                                                \
-    }                                                         \
-  }while(0)
+      break;                                                  \
+    }
 
 
-extern void simpleTask_auto(unsigned& launchSize, unsigned meanExp,
+void simpleTask_auto(unsigned& launchSize, unsigned meanExp,
                             float* cls, float* clx, float* cly);
-extern void simpleTask_man(const cudaConfig::ExecutionPolicy& execPol,
+void simpleTask_man(const cuda::ExecutionPolicy& execPol,
                           unsigned meanExp, float* cls, float* clx, float* cly);
-extern __global__ void simpleTask_kernel(unsigned meanExp, float* cls,
+__global__ void simpleTask_kernel(unsigned meanExp, float* cls,
                                          float* clx, float* cly);
-namespace cudaConfig{
-extern cudaConfig::ExecutionPolicy configure(bool cudaStatus, int totalThreads, const void* f);
-}
-
 
 ClusterSummaryProducer::ClusterSummaryProducer(const edm::ParameterSet& iConfig)
   : doStrips(iConfig.getParameter<bool>("doStrips")),
@@ -111,7 +103,7 @@ ClusterSummaryProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetu
     std::mt19937 mt(rd());
     std::uniform_real_distribution<float> randFl(0, 1000);
     std::vector<std::future<void>> futVec(3);
-    unsigned meanExp= 10;
+    unsigned meanExp= 1000;
     cudaPointer<float> cls(meanExp), clx(meanExp),
                        cly(meanExp);
     //Initialize
@@ -141,27 +133,27 @@ ClusterSummaryProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetu
     auto GPUResult= cudaService->cudaLaunch(meanExp, simpleTask_auto, meanExp,
                                                 cls, clx, cly);
     #else
-    auto execPol= cudaConfig::configure(cudaService->cudaStatus(), meanExp,
-                                        (void*)simpleTask_kernel);
+    auto execPol= cuda::AutoConfig()(meanExp,(void*)simpleTask_kernel);
     auto GPUResult= cudaService->cudaLaunch(execPol, simpleTask_man, meanExp,
                                                cls, clx, cly);
     #endif
     GPUResult.get();
 
+    std::atomic<unsigned> successN; successN= 0;
     futVec[0]= cudaService->schedule([&] {
-      for(unsigned i=0; i<meanExp; i++)
+      for(unsigned i=0; i<meanExp; i++, successN++)
         CPPUNIT_ASSERT_DOUBLES_EQUAL(cpuCls[i], cls.p[i], TOLERANCEorig);
     });
     futVec[1]= cudaService->schedule([&] {
-      for(unsigned i=0; i<meanExp; i++)
+      for(unsigned i=0; i<meanExp; i++, successN++)
         CPPUNIT_ASSERT_DOUBLES_EQUAL(cpuCls[i], cls.p[i], TOLERANCEorig);
     });
     futVec[2]= cudaService->schedule([&] {
-      for(unsigned i=0; i<meanExp; i++)
+      for(unsigned i=0; i<meanExp; i++, successN++)
         CPPUNIT_ASSERT_DOUBLES_EQUAL(cpuCls[i], cls.p[i], TOLERANCEorig);
     });
     for(auto&& fut: futVec) fut.get();
-    if (testSuccess) std::cout<< "\n[ClSumProd]: --> PASS Integration test PASS!!!\n\n\n";
+    if (successN == 3*meanExp) std::cout<< "\n[ClSumProd]: --> PASS Integration test PASS!!!\n\n\n";
     else std::cout<< "\n[ClSumProd]: --> FAIL Integration test FAIL!!!\n\n\n";
    //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
    //===================++++++++++++========================

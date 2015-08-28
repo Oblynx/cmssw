@@ -12,8 +12,8 @@
 // Please see the file README.md (https://github.com/harrism/hemi/README.md) 
 // for fullManual documentation and discussion.
 ///////////////////////////////////////////////////////////////////////////////
-#ifndef CUDA_LAUNCH_CONFIGURATION_H
-#define CUDA_LAUNCH_CONFIGURATION_H
+#ifndef CUDA_LAUNCH_CONFIGURATION_CUH
+#define CUDA_LAUNCH_CONFIGURATION_CUH
 
 #include <cuda_runtime_api.h>
 //#include <cuda_occupancy.h>
@@ -34,12 +34,7 @@ inline cudaError_t checkCuda(cudaError_t result)
   return result;
 }
 
-namespace cudaConfig{
-
-/*template<typename Args...>
-class Autowrap{
-  void operator()()
-};*/
+namespace cuda{
 
 /*size_t availableSharedBytesPerBlock(size_t sharedMemPerMultiprocessor,
                                     size_t sharedSizeBytesStatic,
@@ -50,13 +45,6 @@ class Autowrap{
   return bytes - sharedSizeBytesStatic;    
 }*/
 
-template<typename F>
-inline cudaConfig::ExecutionPolicy configure(bool cudaStatus, int totalThreads, F&& f){
-  cudaConfig::ExecutionPolicy execPol;
-  if(cudaStatus)
-    checkCuda(configurePolicy(execPol, std::forward<F>(f), totalThreads));
-  return execPol;
-}
 template <typename F>
 inline cudaError_t configurePolicy(ExecutionPolicy& p, F&& kernel, int totalThreads= 1,
                       size_t dynamicSMemSize= 0, int blockSizeLimit= 0)
@@ -90,6 +78,6 @@ inline cudaError_t configurePolicy(ExecutionPolicy& p, F&& kernel, int totalThre
   return cudaSuccess;
 }
 
-}   // namespace cudaConfig
+}   // namespace cuda
 
-#endif // CUDA_LAUNCH_CONFIGURATION_H
+#endif // CUDA_LAUNCH_CONFIGURATION_CUH

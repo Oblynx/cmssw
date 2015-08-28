@@ -53,21 +53,17 @@ __global__ void original_kernel(unsigned meanExp, float* cls, float* clx, float*
     original_kernel<<<execPol.getGridSize(), execPol.getBlockSize()>>>(meanExp,cls,clx,cly);
   }
 //@@@@@@@@@@@@@@@@
-  void long_man(const cudaConfig::ExecutionPolicy execPol, const int n,
+  void long_man(const cudaConfig::ExecutionPolicy& execPol, const int n,
             const int times, const float* in, float* out){
     long_kernel<<<execPol.getGridSize(), execPol.getBlockSize()>>>(n,times,in,out);
   }
-  void matAdd_man(const cudaConfig::ExecutionPolicy execPol,int m, int n, const float*
+  void matAdd_man(const cudaConfig::ExecutionPolicy& execPol,int m, int n, const float*
               __restrict__ A, const float* __restrict__ B, float* __restrict__ C){
     matAdd_kernel<<<execPol.getGridSize(), execPol.getBlockSize()>>>(m,n,A,B,C);
   }
-  void original_man(const cudaConfig::ExecutionPolicy execPol,
+  void original_man(const cudaConfig::ExecutionPolicy& execPol,
                 unsigned meanExp, float* cls, float* clx, float* cly){
     original_kernel<<<execPol.getGridSize(), execPol.getBlockSize()>>>(meanExp,cls,clx,cly);
-  }
-//@@@@@@@@@@@@@@@@
-  cudaConfig::ExecutionPolicy long_config(bool cudaStatus, int launchSize){
-    return cudaConfig::configure(cudaStatus, launchSize, long_kernel);
   }
 //@@@@@@@@@@@@@@@@
 

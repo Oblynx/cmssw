@@ -87,9 +87,10 @@ namespace edm{namespace service{
       cudaLaunchManaged(const cudaConfig::ExecutionPolicy& execPol, F&& f, Args&&... args);
 
     template<typename F, typename... Args, typename LaunchType, typename
-        std::enable_if< std::is_same<unsigned, typename std::remove_reference<LaunchType>::type>
-        ::value || std::is_same<cudaConfig::ExecutionPolicy, typename std::remove_reference<
-        LaunchType>::type>::value, int >::type= 0>
+        std::enable_if< std::is_same<unsigned, typename std::remove_cv<
+        typename std::remove_reference<LaunchType>::type>::type>::value ||
+        std::is_same<cudaConfig::ExecutionPolicy, typename std::remove_cv<
+        typename std::remove_reference<LaunchType>::type>::type>::value, int >::type= 0>
     inline std::future<cudaError_t>
       cudaLaunch(LaunchType&& launchParam, F&& kernelWrap, Args&&... args);
     //!< @brief Clears tasks queue
@@ -157,9 +158,10 @@ namespace edm{namespace service{
   }
 
   template<typename F, typename... Args, typename LaunchType, typename
-    std::enable_if< std::is_same<unsigned, typename std::remove_reference<LaunchType>::type>
-      ::value || std::is_same<cudaConfig::ExecutionPolicy, typename std::remove_reference<
-      LaunchType>::type>::value, int >::type>
+        std::enable_if< std::is_same<unsigned, typename std::remove_cv<
+        typename std::remove_reference<LaunchType>::type>::type>::value ||
+        std::is_same<cudaConfig::ExecutionPolicy, typename std::remove_cv<
+        typename std::remove_reference<LaunchType>::type>::type>::value, int >::type>
   inline std::future<cudaError_t> CudaService::cudaLaunch(LaunchType&& launchParam, F&& kernelWrap, Args&&... args){
     if (!cudaDevCount_){
       std::cout<<"[CudaService]: GPU not available\n";

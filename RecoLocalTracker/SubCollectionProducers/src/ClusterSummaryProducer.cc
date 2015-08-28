@@ -19,7 +19,7 @@ int testSuccess= true;
                 << "Actual: "<<(actual)<<"\t"                 \
                 << "Delta: "<<(delta)<<"\n\n";                \
       testSuccess= false;                                     \
-      break;                                                  \
+      exit(1);                                                \
     }                                                         \
   }while(0)
 

@@ -1,5 +1,6 @@
 // Service to test
 #include "FWCore/Services/interface/cudaService_TBBQueueBlocking.h"
+#include <cuda_runtime.h>
 
 // std
 #include <iostream>
@@ -29,15 +30,14 @@ using namespace edm;
 
 class TestCudaService: public CppUnit::TestFixture {
   CPPUNIT_TEST_SUITE(TestCudaService);
-  CPPUNIT_TEST(basicUseTest);
-  CPPUNIT_TEST(passServiceArgTest);
-  CPPUNIT_TEST(basicCUDATest);
-  CPPUNIT_TEST(CUDAAutolaunchManagedTest);
-  CPPUNIT_TEST(CUDAAutolaunch2Dconfig);
-  CPPUNIT_TEST(CudaPointerAutolaunchTest);
+  //CPPUNIT_TEST(basicUseTest);
+  //CPPUNIT_TEST(passServiceArgTest);
+  //CPPUNIT_TEST(CUDAAutolaunchManagedTest);
+  //CPPUNIT_TEST(CUDAAutolaunch2Dconfig);
+  //CPPUNIT_TEST(CudaPointerAutolaunchTest);
   CPPUNIT_TEST(timeBenchmarkTask);
   //CPPUNIT_TEST(timeBenchmarkKernel);
-  CPPUNIT_TEST(originalKernelTest);
+  //CPPUNIT_TEST(originalKernelTest);
   CPPUNIT_TEST_SUITE_END();
 public:
   //!< @brief 
@@ -51,8 +51,6 @@ public:
   void basicUseTest();
   //!< @brief Test behaviour if the task itself enqueues another task in same pool
   void passServiceArgTest();
-  //!< @brief Test scheduling many threads that launch CUDA kernels (CudaService->schedule)
-  void basicCUDATest();
   //!< @brief Test auto launch cuda kernel with its arguments in managed memory
   void CUDAAutolaunchManagedTest();
   //!< @brief Use auto config to manually configure a 2D kernel launch
@@ -68,7 +66,6 @@ public:
 private:
   void print_id(int id);
   void go();
-  void cudaTask(int n, int i, const float* din, int times);
   //--$--//
   mutex mtx;
   condition_variable cv;
@@ -83,11 +80,24 @@ private:
 
 ///Registration of the test suite so that the runner can find it
 CPPUNIT_TEST_SUITE_REGISTRATION(TestCudaService);
-extern void cudaTaskImplement(int n, int i, const float* din, int times);
-extern void long_auto(int launchSize, const int n, const int times, const float* in, float* out);
-extern void long_man(const cudaConfig::ExecutionPolicy execPol, const int n,
-                     const int times, const float* in, float* out);
+
 /* EXTERN kernel definitions */
+namespace cudaConfig{
+extern cudaConfig::ExecutionPolicy configure(bool cudaStatus, int totalThreads, const void* f);
+}
+extern __global__ void long_kernel(const int n, const int times, const float* in, float* out);
+extern void long_auto(unsigned& launchSize, const int n, const int times, const float* in, float* out);
+extern void long_man(const cudaConfig::ExecutionPolicy& execPol, const int n,
+                     const int times, const float* in, float* out);
+extern __global__ void matAdd_kernel(int m, int n, const float* __restrict__ A, 
+                              const float* __restrict__ B, float* __restrict__ C);
+extern void matAdd_auto(unsigned& launchSize, int m, int n, const float* __restrict__ A, 
+                            const float* __restrict__ B, float* __restrict__ C);
+extern void matAdd_man(const cudaConfig::ExecutionPolicy& execPol,int m, int n, const float*
+              __restrict__ A, const float* __restrict__ B, float* __restrict__ C);
+extern __global__ void original_kernel(unsigned meanExp, float* cls, float* clx, float* cly);
+extern void original_man(const cudaConfig::ExecutionPolicy& execPol,
+                unsigned meanExp, float* cls, float* clx, float* cly);
 
 /*$$$---TESTS BEGIN---$$$*/
 
@@ -127,26 +137,6 @@ void TestCudaService::passServiceArgTest(){
     poolArg->schedule([]() {cout<<"Pool service passed as arg (Service<>->cref)\n";}).get();
   }, std::cref(*cuSerPtr)).get();
 }
-void TestCudaService::basicCUDATest(){
-  cout<<"Starting CUDA test...\n";
-  vector<future<void>> futures;
-  const int N= 30;
-
-  float *in, *din;
-  int n= 2000;
-  in= new float[n];
-  for(int i=0; i<n; i++) in[i]= 10*cos(3.141592/100*i);
-  // Make GPU input data available for all threads
-  cudaMalloc((void **) &din, n*sizeof(float));
-  cudaMemcpy(din, in, n*sizeof(float), cudaMemcpyHostToDevice);
-
-  // spawn N threads
-  for (int i=0; i<N; ++i){
-    futures.emplace_back((*cuSerPtr)->schedule(&TestCudaService::cudaTask, this,
-                         n, i, din, 2));
-  }
-  for (auto& future: futures) future.get();
-}
 #define TOLERANCEmul 5e-1
 void TestCudaService::CUDAAutolaunchManagedTest(){
   if (!(*cuSerPtr)->cudaStatus()){
@@ -162,7 +152,7 @@ void TestCudaService::CUDAAutolaunchManagedTest(){
 
   cout<<"Launching auto config...\n";
   // Auto launch config
-  (*cuSerPtr)->cudaLaunchAuto(n, long_auto, n,times,in,out).get();
+  (*cuSerPtr)->cudaLaunch((unsigned)n, long_auto, n,times,in,out).get();
   for(int i=0; i<n; i++) if (abs(times*in[i]-out[i])>TOLERANCEmul){
     cout<<"ERROR: i="<<i<<'\n';
     CPPUNIT_ASSERT_DOUBLES_EQUAL(times*in[i], out[i], TOLERANCEmul);
@@ -170,8 +160,8 @@ void TestCudaService::CUDAAutolaunchManagedTest(){
 
   cout<<"Launching manual config...\n";
   // Manual launch config
-  execPol= cudaConfig::ExecutionPolicy(320, (n-1+320)/320);
-  (*cuSerPtr)->cudaLaunchMan(execPol, long_man, n,times,in,out).get();
+  auto execPol= cudaConfig::ExecutionPolicy(320, (n-1+320)/320);
+  (*cuSerPtr)->cudaLaunch(execPol, long_man, n,times,in,out).get();
   for(int i=0; i<n; i++) if (abs(times*in[i]-out[i])>TOLERANCEmul){
     cout<<"ERROR: i="<<i<<'\n';
     CPPUNIT_ASSERT_DOUBLES_EQUAL(times*in[i], out[i], TOLERANCEmul);
@@ -199,7 +189,7 @@ void TestCudaService::CUDAAutolaunch2Dconfig(){
     cudaMallocManaged(&A[thread], m*n*sizeof(float));
     cudaMallocManaged(&B[thread], m*n*sizeof(float));
     cudaMallocManaged(&C[thread], m*n*sizeof(float));
-    for (int i=0; i<n*m; i++){
+    for (unsigned i=0; i<n*m; i++){
       A[thread][i]= 10*(thread+1)*sin(PI/100*i);
       B[thread][i]= (thread+1)*sin(PI/100*i+PI/6)*sin(PI/100*i+PI/6);
     }
@@ -207,7 +197,7 @@ void TestCudaService::CUDAAutolaunch2Dconfig(){
 
   //Recommended launch configuration (1D)
   cudaConfig::ExecutionPolicy execPol(cudaConfig::configure((*cuSerPtr)->cudaStatus(),
-                                                    n*m, matAddKernel));
+                                                    n*m, (void*)matAdd_kernel));
   //Explicitly set desired launch config (2D) based on the previous recommendation
   const unsigned blockSize= sqrt(execPol.getBlockSize().x);
   //Explicitly set blockSize, automatically demand adequate grid size to map the input
@@ -215,8 +205,8 @@ void TestCudaService::CUDAAutolaunch2Dconfig(){
 
   //Semi-manually launch GPU tasks
   for(int thread=0; thread<threadN; thread++){
-    futVec[thread]= (*cuSerPtr)->cudaLaunchManaged(execPol, matAddKernel, m, n,
-                                                  A[thread],B[thread],C[thread]);
+    futVec[thread]= (*cuSerPtr)->cudaLaunch(execPol, matAdd_man, m, n,
+                                            A[thread],B[thread],C[thread]);
   }
   cout<<"Launch config:\nBlock="<<execPol.getBlockSize().x<<", "<<execPol.getBlockSize().y;
   cout<<"\nGrid="<<execPol.getGridSize().x<<", "<<execPol.getGridSize().y<<"\n\n";
@@ -227,7 +217,7 @@ void TestCudaService::CUDAAutolaunch2Dconfig(){
 
   for(int thread=0; thread<threadN; thread++){
     //Assert matrix addition correctness
-    for (int i=0; i<n*m; i++)
+    for (unsigned i=0; i<n*m; i++)
       if (abs(A[thread][i]+B[thread][i]-C[thread][i]) > TOLERANCEadd){
         CPPUNIT_ASSERT_DOUBLES_EQUAL(A[thread][i]+B[thread][i],
                                      C[thread][i], TOLERANCEadd);
@@ -245,8 +235,8 @@ void TestCudaService::CudaPointerAutolaunchTest(){
   cout<<"Launching auto...\n";
   // Auto launch config
   cudaConfig::ExecutionPolicy execPol(cudaConfig::configure((*cuSerPtr)->cudaStatus(),
-                                                    n, longKernel));
-  (*cuSerPtr)->cudaLaunchManaged(execPol, longKernel, n,times,in,out).get();
+                                                    n, (void*)long_kernel));
+  (*cuSerPtr)->cudaLaunch(execPol, long_man, n,times,in,out).get();
   for(int i=0; i<n; i++) if (abs(times*in.p[i]-out.p[i])>TOLERANCEmul){
     cout<<"ERROR: i="<<i<<'\n';
     CPPUNIT_ASSERT_DOUBLES_EQUAL(times*in.p[i], out.p[i], TOLERANCEmul);
@@ -255,7 +245,7 @@ void TestCudaService::CudaPointerAutolaunchTest(){
   cout<<"Launching manual...\n";
   // Manual launch config
   execPol= cudaConfig::ExecutionPolicy(320, (n-1+320)/320);
-  (*cuSerPtr)->cudaLaunchManaged(execPol, longKernel, n,times,in,out).get();
+  (*cuSerPtr)->cudaLaunchManaged(execPol, long_man, n,times,in,out).get();
   for(int i=0; i<n; i++) if (abs(times*in.p[i]-out.p[i])>TOLERANCEmul){
     cout<<"ERROR: i="<<i<<'\n';
     CPPUNIT_ASSERT_DOUBLES_EQUAL(times*in.p[i], out.p[i], TOLERANCEmul);
@@ -263,7 +253,7 @@ void TestCudaService::CudaPointerAutolaunchTest(){
 }
 void TestCudaService::timeBenchmarkTask(){
   cout << "Starting quick task launch && completion time benchmark...\n";
-  long N= 10000;
+  long N= 100000;
   auto start= chrono::steady_clock::now();
   auto end = start;
   auto diff= start-start;
@@ -278,8 +268,8 @@ void TestCudaService::timeBenchmarkTask(){
     start = chrono::steady_clock::now();
     for(register int thr=0; thr<threadN; thr++)
       futVec[thr]= (*cuSerPtr)->schedule([] (){
-        for (register short k=0; k<5; k++)
-          cout<<"";
+        //for (register short k=0; k<20; k++)
+          //cout<<"";
       });
     for(auto&& elt: futVec) {
       elt.get();
@@ -301,8 +291,8 @@ void TestCudaService::timeBenchmarkTask(){
     start = chrono::steady_clock::now();
     for(register int thr=0; thr<threadN; thr++)
       futVec[thr]= (*cuSerPtr)->schedule([] (){
-        for (register short k=0; k<5; k++)
-          cout<<"";
+        //for (register short k=0; k<20; k++)
+          //cout<<"";
       });
     for(auto&& elt: futVec) {
       elt.get();
@@ -394,9 +384,9 @@ void TestCudaService::originalKernelTest(){
   }
   //Calculate results on GPU
   auto execPol= cudaConfig::configure((*cuSerPtr)->cudaStatus(),
-                                      meanExp, originalKernel);
-  auto result= (*cuSerPtr)->cudaLaunchManaged(execPol, originalKernel, meanExp,
-                                           cls, clx, cly);
+                                      meanExp, (void*)original_kernel);
+  auto result= (*cuSerPtr)->cudaLaunch(execPol, original_man, meanExp,
+                                       cls, clx, cly);
   result.get();
 
   futVec[0]= (*cuSerPtr)->schedule([&] {
@@ -453,7 +443,4 @@ void TestCudaService::go() {
   unique_lock<mutex> lck(mtx);
   ready = true;
   cv.notify_all();
-}
-void TestCudaService::cudaTask(int n, int i, const float* din, int times){
-  cudaTaskImplement(n,i,din,times);
 }

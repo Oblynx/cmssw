@@ -26,9 +26,10 @@ public:
       sizeOnDevice(elementN*sizeof(T)), attachment(flag), freeFlag(false),
       elementN(elementN) { allocate(); }
 	//Move constructor && assignment
-	cudaPointer(cudaPointer&& other) noexcept: p(other.p), attachment(other.attachment),
-			sizeOnDevice(other.sizeOnDevice), errorState_(other.errorState_),
-			freeFlag(other.freeFlag) { other.p= NULL; }
+	cudaPointer(cudaPointer&& other) noexcept: p(other.p), 
+			sizeOnDevice(other.sizeOnDevice), attachment(other.attachment),
+      errorState_(other.errorState_), freeFlag(other.freeFlag),
+      elementN(other.elementN) { other.p= NULL; }
 	cudaPointer& operator=(cudaPointer&& other) noexcept;
 	//Delete copy constructor and assignment
 	cudaPointer(const cudaPointer&) =delete;
@@ -44,7 +45,6 @@ public:
 	  if (GPUpresent()) cudaStreamAttachMemAsync(stream, p, 0, attachment);
 	}
 	cudaError_t getErrorState() const { return errorState_; }
-	
 	std::vector<T> getVec(bool release= false);
 	bool GPUpresent() { return cuda::GPUPresenceStatic::getStatus(this); }
 
@@ -60,6 +60,29 @@ private:
 	unsigned elementN;
 };
 
+template<typename CPU>
+struct KernelWrapper{
+  KernelWrapper(const void* kernel, CPU fallback): kernel(kernel), fallback(fallback),
+      fallbackPresent(true) {}
+  KernelWrapper(const void* kernel): kernel(kernel), fallback(nullptr),
+      fallbackPresent(false) {}
+  const void* kernel;
+  const CPU fallback;
+  const bool fallbackPresent;
+};/*
+template<>
+struct KernelWrapper<void>{
+  KernelWrapper(const void* kernel): kernel(kernel), fallbackPresent(false) {}
+  const void* kernel;
+  const bool fallbackPresent;
+};*/
+template<typename CPU>
+KernelWrapper<CPU> make_wrapper(const void* kernel, CPU fallback){
+  return KernelWrapper<CPU>(kernel, fallback);
+}
+KernelWrapper<void*> make_wrapper(const void* kernel){
+  return KernelWrapper<void*>(kernel);
+}
 //cudaConst??
 
 /**$$$~~~~~ CudaPointer method definitions ~~~~~$$$**/
@@ -120,7 +143,6 @@ void cudaPointer<T>::deallocate(){
   else
     delete[] p;
 }
-
 
 /**$$$~~~~~ Kernel argument wrapper templates ~~~~~$$$**/
 namespace edm{namespace service{namespace utils{

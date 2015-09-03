@@ -3,13 +3,13 @@ import FWCore.ParameterSet.Config as cms
 process = cms.Process("SiPixelDBTestt")
 
 # does not run - fake conditions do not exist 
-process.load("Configuration.StandardSequences.FakeConditions_cff")
+# process.load("Configuration.StandardSequences.FakeConditions_cff")
 
-#process.load("Configuration.StandardSequences.FrontierConditions_GlobalTag_cff")# Choose the global tag here:
+process.load("Configuration.StandardSequences.FrontierConditions_GlobalTag_cff")# Choose the global tag here:
 # 2012
-#process.GlobalTag.globaltag = 'GR_P_V40::All'
+process.GlobalTag.globaltag = 'GR_P_V40::All'
 # MC 2913
-#process.GlobalTag.globaltag = 'MC_70_V1::All'
+# process.GlobalTag.globaltag = 'MC_70_V1::All'
 
 
 #useFakeSource = True

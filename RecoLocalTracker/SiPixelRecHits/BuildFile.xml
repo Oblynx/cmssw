@@ -1,3 +1,4 @@
+<use name="FWCore/Services"/>
 <use   name="FWCore/Framework"/>
 
 <use   name="FWCore/ParameterSet"/>

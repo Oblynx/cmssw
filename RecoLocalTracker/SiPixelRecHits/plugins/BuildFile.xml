@@ -1,3 +1,5 @@
+<use name="FWCore/Services"/>
+<use name="cuda"/>
 <use   name="RecoLocalTracker/ClusterParameterEstimator"/>
 <use   name="RecoLocalTracker/Records"/>
 <use   name="RecoLocalTracker/SiPixelRecHits"/>

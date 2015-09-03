@@ -3,6 +3,7 @@
 
 #include <cuda_runtime_api.h>
 #include <type_traits>
+#include <stdexcept>
 
 //Forward declaration
 class cudaPtrBase;
@@ -16,12 +17,18 @@ namespace cuda{
   // Read only by cudaPointer instances, cuda::AutoConfig
   class GPUPresenceStatic{
   	static bool status_;
+    //!< @brief Checks that only 1 CudaService object is constructed
+    static bool alreadySet_;
   public:
     // SET access: only CudaService
   	template<typename T, typename std::enable_if< std::is_same< edm::service::CudaService,
       typename std::remove_reference<typename std::remove_cv<T>::type>::type >
         ::value, int >::type= 0>
-  	static void setStatus(const T*, bool newStatus){ status_= newStatus; }
+    //!< @brief Set GPU presence. In release versions, throw if multiple services are constructed
+  	static void setStatus(const T*, bool newStatus){
+      if(!alreadySet_) status_= newStatus, alreadySet_= true;
+      // else throw new std::runtime_error("More than 1 CudaService object constructed!");
+    }
   	// GET access: only cudaPointer
   	template<typename T, typename std::enable_if< std::is_base_of< cudaPtrBase,
       typename std::remove_reference<typename std::remove_cv<T>::type>::type >::value

@@ -44,6 +44,7 @@ public:
 	  attachment= single;
 	  if (GPUpresent()) cudaStreamAttachMemAsync(stream, p, 0, attachment);
 	}
+  void releaseStream() { attachment= host; }
 	cudaError_t getErrorState() const { return errorState_; }
 	std::vector<T> getVec(bool release= false);
 	bool GPUpresent() { return cuda::GPUPresenceStatic::getStatus(this); }
@@ -80,8 +81,9 @@ template<typename CPU>
 KernelWrapper<CPU> make_wrapper(const void* kernel, CPU fallback){
   return KernelWrapper<CPU>(kernel, fallback);
 }
-KernelWrapper<void*> make_wrapper(const void* kernel){
-  return KernelWrapper<void*>(kernel);
+//If no fallback is provided...
+KernelWrapper<void(*)(...)> make_wrapper(const void* kernel){
+  return KernelWrapper<void(*)(...)>(kernel);
 }
 //cudaConst??
 
@@ -156,6 +158,7 @@ namespace edm{namespace service{namespace utils{
   {
     //std::cout<<"[passKernelArg]: Managed arg!\n";
     cudaPtr.attachStream();
+    std::cout<<' '<<&cudaPtr.p;
     return cudaPtr.p;
   }
 
@@ -165,6 +168,7 @@ namespace edm{namespace service{namespace utils{
                   ::type >::value, int >::type= 0>
   inline T&& passKernelArg(typename std::remove_reference<T>::type& valueArg) noexcept{
     //std::cout<<"[passKernelArg]: value arg\n";
+    std::cout<<' '<<&valueArg;
     return static_cast<T&&>(valueArg);
   }
   template<typename T, typename std::enable_if< !std::is_base_of< cudaPtrBase,
@@ -174,6 +178,28 @@ namespace edm{namespace service{namespace utils{
     static_assert(!std::is_lvalue_reference<T>::value,
                   "Can not forward an rvalue as an lvalue.");
     //std::cout<<"[passKernelArg]: value arg (rvalue ref)\n";
+    return static_cast<T&&>(valueArg);
+  }
+
+  //!< @brief Release stream attachment of cudaPtr
+  template<typename T, typename std::enable_if< std::is_base_of< cudaPtrBase,
+              typename std::remove_reference<typename std::remove_cv<T>::type>
+                  ::type >::value, int >::type= 0>
+  inline T&& releaseKernelArg(typename std::remove_reference<T>::type& cudaPtr) noexcept{
+    cudaPtr.releaseStream();
+    return static_cast<T&&>(cudaPtr);
+  }
+  //!< @brief If T != cudaPointer, do nothing
+  template<typename T, typename std::enable_if< !std::is_base_of< cudaPtrBase,
+              typename std::remove_reference<typename std::remove_cv<T>::type>
+                  ::type >::value, int >::type= 0>
+  inline T&& releaseKernelArg(typename std::remove_reference<T>::type& valueArg) noexcept{
+    return static_cast<T&&>(valueArg);
+  }
+  template<typename T, typename std::enable_if< !std::is_base_of< cudaPtrBase,
+              typename std::remove_reference<typename std::remove_cv<T>::type>
+                  ::type >::value, int >::type= 0>
+  inline T&& releaseKernelArg(typename std::remove_reference<T>::type&& valueArg) noexcept{
     return static_cast<T&&>(valueArg);
   }
 }}} //namespace edm::service::utils

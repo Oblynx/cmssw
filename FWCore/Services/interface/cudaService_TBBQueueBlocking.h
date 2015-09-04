@@ -151,14 +151,17 @@ namespace edm{namespace service{
       std::is_same<unsigned, typename std::remove_cv<typename std::remove_reference<
       LaunchType>::type>::type>::value, int >::type= 0>
   inline cuda::ExecutionPolicy policyFromLaunchparam(LaunchType&& size, const void* kernel){
-    auto execPol= cuda::AutoConfig()(size, kernel);
-    return execPol;
+    // std::cout<<"[policyFromLaunchparam]: Autocreate ExecPol, size="<<size<<"\n";
+    // std::cout << "[policyFromLaunchparam]: Auto ExecPol config:\n\t"
+    //         <<"Grid/Block/Shared= "<<execPol.getGridSize().x<<'/'<<execPol.getBlockSize().x<<'/'<<execPol.getSharedMemBytes()<<'\n';
+    return cuda::AutoConfig()(size, kernel);
   }
   //If passed an ExecutionPolicy, move it.
   template<typename LaunchType, typename std::enable_if<
       std::is_same<cuda::ExecutionPolicy, typename std::remove_cv<typename
       std::remove_reference<LaunchType>::type>::type>::value, int >::type= 0>
   inline LaunchType&& policyFromLaunchparam(LaunchType&& launchParam, const void*){
+    std::cout<<"[policyFromLaunchparam]: Move ExecPol\n";
     return static_cast<LaunchType&&>(launchParam);
   }
   
@@ -189,12 +192,18 @@ namespace edm{namespace service{
         if (status!= cudaSuccess) std::this_thread::sleep_for(
                                               std::chrono::microseconds(50));
       }while(status == cudaErrorDevicesUnavailable && attempt < maxKernelAttempts_);
+      utils::operateOnParamPacks(utils::releaseKernelArg<Args>(args)...);
       return status;
     }));
     std::future<cudaError_t> resultFut= task->get_future();
     tasks_.emplace([task](){ (*task)(); });
     return resultFut;
   }
+
+#include <cstdio>
+__global__ void paramKernel(const int param, const int param2);
+__global__ void inOutKernel(const int in, int* out);
+
   template<typename F, typename... Args, typename LaunchType, typename
         std::enable_if< std::is_same<unsigned, typename std::remove_cv<
         typename std::remove_reference<LaunchType>::type>::type>::value ||
@@ -203,6 +212,7 @@ namespace edm{namespace service{
   inline std::future<cudaError_t> 
     CudaService::cudaLaunchWrapper(LaunchType&& launchParam, F&& kernelWrapper, Args&&... args)
   {
+    std::cout << "[CudaService]: cudaLaunchWrapper\n";
     if (!cudaDevCount_){
       std::cout<<"[CudaService]: GPU not available. Falling back to CPU.\n";
       return schedule([&] ()-> cudaError_t {
@@ -211,24 +221,39 @@ namespace edm{namespace service{
         return cudaErrorNoDevice;
       });
     }
+    unsigned argNumber= sizeof...(args);
     using packaged_task_t = std::packaged_task<cudaError_t()>;
-    // Unwrap each arg's address into a void** list
-    void* argList[sizeof...(args)];
-    utils::unwrapToList(argList, 0, utils::passKernelArg<Args>(args)...);
-    // Create ExecutionPolicy automatically iff LaunchType==unsigned, otherwise move it
-    auto execPol= policyFromLaunchparam(std::move(launchParam), kernelWrapper.kernel);
-    std::shared_ptr<packaged_task_t> task(new packaged_task_t([&] ()-> cudaError_t{
+    std::shared_ptr<packaged_task_t> task(new packaged_task_t([&,argNumber] ()-> cudaError_t{
+      // void** argList=(void**)malloc(argNumber*sizeof(void*));
+      // void* argList[argNumber];
+      // Unwrap each arg's address into a void** list
+      // utils::unwrapToList<0>(argList, utils::passKernelArg<Args>(args)...);
+      // Create ExecutionPolicy automatically iff LaunchType==unsigned, otherwise move it
+      auto execPol= policyFromLaunchparam(std::move(launchParam), kernelWrapper.kernel);
       int attempt= 0;
       cudaError_t status;
       // If device is not available, retry kernel up to maxKernelAttempts_ times
       do{
-        cudaLaunchKernel(kernelWrapper.kernel, execPol.getGridSize(), execPol.getBlockSize(),
-                         argList, execPol.getSharedMemBytes(), cudaStreamPerThread);
+        std::cout << "[CudaService>Task]: Launching kernel with config:\n\t"
+            <<"Grid/Block/Shared= "<<execPol.getGridSize().x<<'/'<<execPol.getBlockSize().x<<'/'
+            <<execPol.getSharedMemBytes()<<" CudaStream: "<<cudaStreamPerThread<<'\n';
+        // status= cudaLaunchKernel(kernelWrapper.kernel, execPol.getGridSize(), execPol.getBlockSize(),
+        //                  const_cast<void**>(argList), execPol.getSharedMemBytes(), cudaStreamPerThread);
+        void* argList[2];
+        int arg1=5, anInteger= 6;
+        int* darg2; cudaMalloc(&darg2, sizeof(int)); cudaMemcpy(darg2, &anInteger, sizeof(int), cudaMemcpyHostToDevice);
+        argList[0]= &arg1, argList[1]= &darg2;
+        status= cudaLaunchKernel((void*)inOutKernel, 1,1, argList,0,cudaStreamPerThread);
+        std::cout<<"[CudaService>Task]: Cuda status after launch: "<<status<<"\n";
         attempt++;
         status= cudaStreamSynchronize(cudaStreamPerThread);
+        std::cout<<"[CudaService>Task]: Cuda status after launch: "<<status<<"\n";
+        cudaMemcpy(&anInteger, darg2, sizeof(int), cudaMemcpyDeviceToHost);
+        std::cout<<"[CudaService>Task]: arg2="<<anInteger<<'\n';
         if (status!= cudaSuccess) std::this_thread::sleep_for(
-                                              std::chrono::microseconds(50));
+                                              std::chrono::microseconds(30));
       }while(status == cudaErrorDevicesUnavailable && attempt < maxKernelAttempts_);
+      utils::operateOnParamPacks(utils::releaseKernelArg<Args>(args)...);
       return status;
     }));
     std::future<cudaError_t> resultFut= task->get_future();

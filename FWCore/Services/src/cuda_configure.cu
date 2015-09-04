@@ -6,8 +6,15 @@
 namespace cuda{
 ExecutionPolicy AutoConfig::operator()(int totalThreads, const void* f){
   cuda::ExecutionPolicy execPol;
-  if(cuda::GPUPresenceStatic::getStatus(this))
+  if(cuda::GPUPresenceStatic::getStatus(this)){
     configurePolicy(execPol, f, totalThreads);
+  }
   return execPol;		
 }
+
 }  //namespace cuda
+
+namespace edm{namespace service{
+__global__ void paramKernel(const int param, const int param2) {}
+__global__ void inOutKernel(const int in, int* out) {*out= in;}
+}}

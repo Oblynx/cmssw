@@ -397,10 +397,13 @@ void TestCudaService::originalKernelTest(){
   //Calculate results on GPU
   // auto execPol= cuda::AutoConfig()(meanExp, (void*)original_kernel);
   // auto result= (*cuSerPtr)->cudaLaunch(execPol, original_man, meanExp,
+        /*DEBUG*/auto tmp= cuda::AutoConfig()(meanExp, (void*)simpleTask_GPU);
   auto result= (*cuSerPtr)->cudaLaunchWrapper(meanExp,
-                      make_wrapper((void*)simpleTask_GPU, simpleTask_CPU),
+                      // make_wrapper((void*)simpleTask_GPU, simpleTask_CPU),
+                      make_wrapper((void*)simpleTask_GPU),
                       meanExp, cls, clx, cly);
   result.get();
+  std::cout << "[Test]: Got result\n";
 
   futVec[0]= (*cuSerPtr)->schedule([&] {
     for(unsigned i=0; i<meanExp; i++)

@@ -43,10 +43,13 @@ Author: Konstantinos Samaras-Tsakiris, kisamara@auth.gr
 #include "utils/cuda_execution_policy.h"
 #include "utils/cuda_pointer.h"
 #include "utils/GPU_presence_static.h"
+#include "utils/template_utils.h"
 
 #include "FWCore/ParameterSet/interface/ConfigurationDescriptions.h"
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
 #include "FWCore/ServiceRegistry/interface/ActivityRegistry.h"
+//Convenience include, since everybody including this also needs "Service.h"
+#include "FWCore/ServiceRegistry/interface/Service.h"
 
 /**$$$~~~~~ CudaService class declaration ~~~~~$$$**/
 namespace edm{namespace service{
@@ -86,6 +89,9 @@ namespace edm{namespace service{
       std::cout << "[ThreadPool]: ---| Destroying pool |---\n";
       stopWorkers();
     }
+
+    //! @brief For testing
+    /*DEBUG*/void setWorkerN(const int& n) { threadNum_= n; }
   protected:
     // need to keep track of threads so we can join them
     std::vector< std::thread > workers_;
@@ -97,6 +103,7 @@ namespace edm{namespace service{
     std::atomic_bool stop_;
     std::atomic_flag beginworking_;   //init: false
     std::atomic_flag endworking_;     //init: true
+    // {F,T}: not working, {T,T}: transition, {T,F}: working
   };
 
   /* Why not a singleton:
@@ -113,12 +120,6 @@ namespace edm{namespace service{
     static void fillDescriptions(edm::ConfigurationDescriptions& descr){
       descr.add("CudaService", edm::ParameterSetDescription());
     }
-
-    // Configure execution policy before launch!
-    //!< @brief !ONLY .cu FILES! Launch kernel function with args
-    template<typename F, typename... Args>
-    inline std::future<cudaError_t>
-      cudaLaunchManaged(const cuda::ExecutionPolicy& execPol, F&& f, Args&&... args);
 
     template<typename F, typename... Args, typename LaunchType, typename
         std::enable_if< std::is_same<unsigned, typename std::remove_cv<
@@ -137,43 +138,8 @@ namespace edm{namespace service{
     int maxKernelAttempts_= 10;
     std::atomic<size_t> gpuFreeMem_;
     std::atomic<size_t> gpuTotalMem_;
-    // {F,T}: not working, {T,T}: transition, {T,F}: working
     std::atomic_int cudaDevCount_;
   };
-
-  template<typename F, typename... Args>
-  inline std::future<cudaError_t>
-    CudaService::cudaLaunchManaged(const cuda::ExecutionPolicy& execPol, F&& f, Args&&... args)
-  {
-    if (!cudaDevCount_){
-      std::cout<<"[CudaService]: GPU not available\n";
-      return schedule([]()->cudaError_t {
-        return cudaErrorNoDevice;
-      });
-    }
-    
-    using packaged_task_t = std::packaged_task<cudaError_t()>;
-    std::shared_ptr<packaged_task_t> task(new packaged_task_t([&] ()-> cudaError_t
-    {
-      int attempt= 0;
-      cudaError_t status;
-      // If device is not available, retry kernel up to maxKernelAttempts_ times
-      do{
-        #ifdef __NVCC__
-          f<<<execPol.getGridSize(), execPol.getBlockSize(),
-              execPol.getSharedMemBytes()>>>(utils::passKernelArg<Args>(args)...);
-        #endif
-        attempt++;
-        status= cudaStreamSynchronize(cudaStreamPerThread);
-        if (status!= cudaSuccess) std::this_thread::sleep_for(
-                                              std::chrono::microseconds(50));
-      }while(status == cudaErrorDevicesUnavailable && attempt < maxKernelAttempts_);
-      return status;
-    }));
-    std::future<cudaError_t> resultFut= task->get_future();
-    tasks_.emplace([task](){ (*task)(); });
-    return resultFut;
-  }
 
   template<typename F, typename... Args, typename LaunchType, typename
         std::enable_if< std::is_same<unsigned, typename std::remove_cv<
@@ -199,8 +165,9 @@ namespace edm{namespace service{
         attempt++;
         status= cudaStreamSynchronize(cudaStreamPerThread);
         if (status!= cudaSuccess) std::this_thread::sleep_for(
-                                              std::chrono::microseconds(50));
+                                              std::chrono::microseconds(30));
       }while(status == cudaErrorDevicesUnavailable && attempt < maxKernelAttempts_);
+      utils::operateParamPack(utils::releaseKernelArg<Args>(args)...);
       return status;
     }));
     std::future<cudaError_t> resultFut= task->get_future();

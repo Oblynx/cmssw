@@ -26,9 +26,9 @@ public:
       sizeOnDevice(elementN*sizeof(T)), attachment(flag), freeFlag(false),
       elementN(elementN) { allocate(); }
 	//Move constructor && assignment
-	cudaPointer(cudaPointer&& other) noexcept: p(other.p), attachment(other.attachment),
-			sizeOnDevice(other.sizeOnDevice), errorState_(other.errorState_),
-			freeFlag(other.freeFlag) { other.p= NULL; }
+	cudaPointer(cudaPointer&& other) noexcept: p(other.p), sizeOnDevice(other.sizeOnDevice),
+      attachment(other.attachment), errorState_(other.errorState_),
+			freeFlag(other.freeFlag), elementN(other.elementN) { other.p= NULL; }
 	cudaPointer& operator=(cudaPointer&& other) noexcept;
 	//Delete copy constructor and assignment
 	cudaPointer(const cudaPointer&) =delete;
@@ -43,6 +43,7 @@ public:
 	  attachment= single;
 	  if (GPUpresent()) cudaStreamAttachMemAsync(stream, p, 0, attachment);
 	}
+  void releaseStream() {attachment= host;}
 	cudaError_t getErrorState() const { return errorState_; }
 	
 	std::vector<T> getVec(bool release= false);
@@ -120,41 +121,5 @@ void cudaPointer<T>::deallocate(){
   else
     delete[] p;
 }
-
-
-/**$$$~~~~~ Kernel argument wrapper templates ~~~~~$$$**/
-namespace edm{namespace service{namespace utils{
-
-  //!< @brief Manipulate cudaPtr and pass the included pointer (expect lvalue ref)
-  template<typename T, typename std::enable_if< std::is_base_of< cudaPtrBase,
-              typename std::remove_reference<typename std::remove_cv<T>::type>
-                  ::type >::value, int >::type= 0>
-  inline auto passKernelArg(typename std::remove_reference<T>::type& cudaPtr) noexcept
-    -> decltype(cudaPtr.p)
-  {
-    //std::cout<<"[passKernelArg]: Managed arg!\n";
-    cudaPtr.attachStream();
-    return cudaPtr.p;
-  }
-
-  //!< @brief Perfectly forward non-cudaPointer args (based on std::forward)
-  template<typename T, typename std::enable_if< !std::is_base_of< cudaPtrBase,
-              typename std::remove_reference<typename std::remove_cv<T>::type>
-                  ::type >::value, int >::type= 0>
-  inline T&& passKernelArg(typename std::remove_reference<T>::type& valueArg) noexcept{
-    //std::cout<<"[passKernelArg]: value arg\n";
-    return static_cast<T&&>(valueArg);
-  }
-  template<typename T, typename std::enable_if< !std::is_base_of< cudaPtrBase,
-              typename std::remove_reference<typename std::remove_cv<T>::type>
-                  ::type >::value, int >::type= 0>
-  inline T&& passKernelArg(typename std::remove_reference<T>::type&& valueArg) noexcept{
-    static_assert(!std::is_lvalue_reference<T>::value,
-                  "Can not forward an rvalue as an lvalue.");
-    //std::cout<<"[passKernelArg]: value arg (rvalue ref)\n";
-    return static_cast<T&&>(valueArg);
-  }
-}}} //namespace edm::service::utils
-
 
 #endif	// CUDA_POINTER_H

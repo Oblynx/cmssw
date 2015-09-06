@@ -12,7 +12,7 @@
 #include "FWCore/Services/src/LoadAllDictionaries.h"
 #include "FWCore/Services/src/EnableFloatingPointExceptions.h"
 #include "FWCore/Services/interface/PrintLoadingPlugins.h"
-#include "FWCore/Services/interface/cudaService_TBBQueueBlocking.h"
+#include "FWCore/Services/interface/cuda_service.h"
 
 using edm::service::JobReportService;
 using edm::service::Tracer;

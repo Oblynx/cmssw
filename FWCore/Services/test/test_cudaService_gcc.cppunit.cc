@@ -1,5 +1,5 @@
 // Service to test
-#include "FWCore/Services/interface/cudaService_TBBQueueBlocking.h"
+#include "FWCore/Services/interface/cuda_service.h"
 #include <cuda_runtime.h>
 
 // std

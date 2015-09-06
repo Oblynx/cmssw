@@ -7,7 +7,7 @@
 #include <chrono>
 #include <cmath>
 #include "FWCore/ServiceRegistry/interface/Service.h"
-#include "FWCore/Services/interface/cudaService_TBBQueueBlocking.h"
+#include "FWCore/Services/interface/cuda_service.h"
 
 #define TOLERANCEorig 1e-5
 #define CPPUNIT_ASSERT_DOUBLES_EQUAL(expected,actual,delta)   \

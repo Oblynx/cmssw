@@ -1,9 +1,9 @@
-// CUDA-specific test resources
-#include <iostream>
-#include "FWCore/Services/interface/utils/cuda_launch_configuration.cuh"
+//! Kernels and kernel wrappers used by the CudaService test suite
+#include "FWCore/Services/interface/utils/cuda_execution_policy.h"
 
 #define BLOCK_SIZE 32
 
+//@@@@@@@@@@@@@@@@ KERNELS
 __global__ void long_kernel(const int n, const int times, const float* in, float* out)
 {
   int x= blockIdx.x*blockDim.x + threadIdx.x;
@@ -37,6 +37,40 @@ __global__ void original_kernel(unsigned meanExp, float* cls, float* clx, float*
     cls[i]= 0;
   }
 }
+
+//@@@@@@@@@@@@@@@@ AUTO WRAPPERS (without fallbacks)
+  void long_auto(bool gpu, unsigned& launchSize,
+                 const int n, const int times, const float* in, float* out){
+    auto execPol= cuda::AutoConfig()(launchSize, (void*)long_kernel);
+    long_kernel<<<execPol.getGridSize(), execPol.getBlockSize()>>>(n,times,in,out);
+  }
+  void matAdd_auto(bool gpu, unsigned& launchSize,
+                   int m, int n, const float* __restrict__ A, 
+                   const float* __restrict__ B, float* __restrict__ C){
+    auto execPol= cuda::AutoConfig()(launchSize, (void*)matAdd_kernel);
+    matAdd_kernel<<<execPol.getGridSize(), execPol.getBlockSize()>>>(m,n,A,B,C);
+  }
+  void original_auto(bool gpu, unsigned& launchSize,
+                     unsigned meanExp, float* cls, float* clx, float* cly){
+    auto execPol= cuda::AutoConfig()(launchSize, (void*)original_kernel);
+    original_kernel<<<execPol.getGridSize(), execPol.getBlockSize()>>>(meanExp,cls,clx,cly);
+  }
+//@@@@@@@@@@@@@@@@ MANUAL WRAPPERS
+  void long_man(bool gpu, const cuda::ExecutionPolicy& execPol,
+                const int n, const int times, const float* in, float* out){
+    long_kernel<<<execPol.getGridSize(), execPol.getBlockSize()>>>(n,times,in,out);
+  }
+  void matAdd_man(bool gpu, const cuda::ExecutionPolicy& execPol,
+                  int m, int n, const float* __restrict__ A,
+                  const float* __restrict__ B, float* __restrict__ C){
+    matAdd_kernel<<<execPol.getGridSize(), execPol.getBlockSize()>>>(m,n,A,B,C);
+  }
+  void original_man(bool gpu, const cuda::ExecutionPolicy& execPol,
+                    unsigned meanExp, float* cls, float* clx, float* cly){
+    original_kernel<<<execPol.getGridSize(), execPol.getBlockSize()>>>(meanExp,cls,clx,cly);
+  }
+
+//@@@@@@@@@@@@@@@@
 __global__
 void simpleTask_GPU(unsigned meanExp, float* cls, float* clx, float* cly)
 {
@@ -60,35 +94,3 @@ void simpleTask_CPU(unsigned meanExp, float* cls, float* clx, float* cly)
     cls[subcl_idx] = 0;
   }
 }
-
-//@@@@@@@@@@@@@@@@
-  void long_auto(bool gpu, unsigned& launchSize,
-                 const int n, const int times, const float* in, float* out){
-    auto execPol= cuda::AutoConfig()(launchSize, (void*)long_kernel);
-    long_kernel<<<execPol.getGridSize(), execPol.getBlockSize()>>>(n,times,in,out);
-  }
-  void matAdd_auto(bool gpu, unsigned& launchSize,
-                   int m, int n, const float* __restrict__ A, 
-                   const float* __restrict__ B, float* __restrict__ C){
-    auto execPol= cuda::AutoConfig()(launchSize, (void*)matAdd_kernel);
-    matAdd_kernel<<<execPol.getGridSize(), execPol.getBlockSize()>>>(m,n,A,B,C);
-  }
-  void original_auto(bool gpu, unsigned& launchSize,
-                     unsigned meanExp, float* cls, float* clx, float* cly){
-    auto execPol= cuda::AutoConfig()(launchSize, (void*)original_kernel);
-    original_kernel<<<execPol.getGridSize(), execPol.getBlockSize()>>>(meanExp,cls,clx,cly);
-  }
-//@@@@@@@@@@@@@@@@
-  void long_man(bool gpu, const cuda::ExecutionPolicy& execPol,
-                const int n, const int times, const float* in, float* out){
-    long_kernel<<<execPol.getGridSize(), execPol.getBlockSize()>>>(n,times,in,out);
-  }
-  void matAdd_man(bool gpu, const cuda::ExecutionPolicy& execPol,
-                  int m, int n, const float* __restrict__ A,
-                  const float* __restrict__ B, float* __restrict__ C){
-    matAdd_kernel<<<execPol.getGridSize(), execPol.getBlockSize()>>>(m,n,A,B,C);
-  }
-  void original_man(bool gpu, const cuda::ExecutionPolicy& execPol,
-                    unsigned meanExp, float* cls, float* clx, float* cly){
-    original_kernel<<<execPol.getGridSize(), execPol.getBlockSize()>>>(meanExp,cls,clx,cly);
-  }

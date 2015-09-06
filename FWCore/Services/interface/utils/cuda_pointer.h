@@ -1,17 +1,30 @@
+//! Defines `cudaPointer` smart pointers for CUDA data arrays
+//! Included with cuda_service.h
 #ifndef CUDA_POINTER_H
 #define CUDA_POINTER_H
 
+//DEBUG
 #include <iostream>
+//<Debug
 
-#include <cuda_runtime_api.h>
+//System
 #include <type_traits>
 #include <vector>
-
+#include <cuda_runtime_api.h>
+//Local components
 #include "GPU_presence_static.h"
 
-//!< @class Useful for type identification
+//! Useful for type identification.
 class cudaPtrBase {};
-//!< @class <unique_ptr>-like managed cuda smart pointer. T: non-const, non-ref
+/*! `std::unique_ptr`-like managed CUDA smart pointer.
+  @param T non-const, non-ref POD data type
+  
+  - Creates C-like arrays of T type elements
+  - Uses Unified Memory (`cudaMallocManaged`)
+  - __NOT__ thread safe.
+  - TODO: future support for STL data types, like vectors.
+  - TODO: future support for GPU constant && texture memory
+*/
 template<typename T>
 class cudaPointer: cudaPtrBase{
 public:
@@ -20,36 +33,56 @@ public:
 		host= cudaMemAttachHost,
 		single= cudaMemAttachSingle
 	};
-	//flag default= host: see CUDA C Programming Guide J.2.2.6
-	// TODO: What if malloc fails???
+	/*! Default constructor for creating arrays of type T elements
+    @param elementN Number of elements in array
+    @param Attachment Leave at default (`host`) for normal use cases.
+    See also CUDA C Programming Guide J.2.2.6
+
+    - TODO: Handle (or forward) __malloc failures__ !
+  */
 	cudaPointer(unsigned elementN=1, Attachment flag=host):
-      sizeOnDevice(elementN*sizeof(T)), attachment(flag), freeFlag(false),
+      sizeOnDevice(elementN*sizeof(T)), attachment(flag), ownershipReleased_(false),
       elementN(elementN) { allocate(); }
-	//Move constructor && assignment
+	//!@{
+  //! Move semantics
 	cudaPointer(cudaPointer&& other) noexcept: p(other.p), sizeOnDevice(other.sizeOnDevice),
       attachment(other.attachment), errorState_(other.errorState_),
-			freeFlag(other.freeFlag), elementN(other.elementN) { other.p= NULL; }
+			ownershipReleased_(other.ownershipReleased_), elementN(other.elementN) { other.p= NULL; }
 	cudaPointer& operator=(cudaPointer&& other) noexcept;
-	//Delete copy constructor and assignment
+  //!@}
+  //!@{
+	//!Delete copy semantics to enforce unique memory ownership
 	cudaPointer(const cudaPointer&) =delete;
 	cudaPointer& operator=(const cudaPointer&) =delete;
+  //!@}
+  //! Vector-copy constructor
 	cudaPointer(const std::vector<T>& vec, Attachment flag=host);
-	//p must retain ownership
+	//! Free memory. If ownership has not been retained, the `ownershipReleased_`
+  //! flag _must have been set._
 	~cudaPointer(){
-		if (!freeFlag) deallocate();
+		if (!ownershipReleased_) deallocate();
 	}
-	//Only call default if on a new thread
+	//! Attaches the memory to the provided CUDA stream
 	void attachStream(cudaStream_t stream= cudaStreamPerThread){
 	  attachment= single;
 	  if (GPUpresent()) cudaStreamAttachMemAsync(stream, p, 0, attachment);
 	}
+  //! Signals that the memory can be accessed by the CPU again
   void releaseStream() {attachment= host;}
 	cudaError_t getErrorState() const { return errorState_; }
-	
+	/*! Construct an `std::vector` out of the contained data.
+    @param release Explicitly signal that the ownership of the data should be released
+    (releases the data and sets the internal `ownershipReleased_` flag)
+  */
 	std::vector<T> getVec(bool release= false);
 	bool GPUpresent() { return cuda::GPUPresenceStatic::getStatus(this); }
 
 	//public!
+  /*! The contained data.
+
+    - TODO: Make private and provide array API overloads (like []), that check
+    whether the memory is accessible from the CPU.
+  */
 	T* p;
 private:
 	void allocate();
@@ -57,13 +90,11 @@ private:
 	size_t sizeOnDevice;
 	Attachment attachment;
 	cudaError_t errorState_;
-	bool freeFlag= false;
+	bool ownershipReleased_= false;
 	unsigned elementN;
 };
 
-//cudaConst??
-
-/**$$$~~~~~ CudaPointer method definitions ~~~~~$$$**/
+/**$$$~~~~~ cudaPointer template method definitions ~~~~~$$$**/
 //Move assignment
 template<typename T>
 cudaPointer<T>& cudaPointer<T>::operator=(cudaPointer&& other) noexcept{
@@ -71,14 +102,14 @@ cudaPointer<T>& cudaPointer<T>::operator=(cudaPointer&& other) noexcept{
   sizeOnDevice= other.sizeOnDevice;
   attachment= other.attachment;
   errorState_= other.errorState_;
-  freeFlag= other.freeFlag;
+  ownershipReleased_= other.ownershipReleased_;
   elementN= other.elementN;
   return *this;
 }
 //Constructor vector copy
 template<typename T>
 cudaPointer<T>::cudaPointer(const std::vector<T>& vec, Attachment flag):
-    attachment(flag), freeFlag(false), elementN(vec.size())
+    attachment(flag), ownershipReleased_(false), elementN(vec.size())
 {
   sizeOnDevice= elementN*sizeof(T);
   std::cout<<"[cudaPtr]: VecCopy, elts="<<elementN<<'\n';
@@ -94,7 +125,7 @@ std::vector<T> cudaPointer<T>::getVec(bool release){
   for(unsigned i=0; i<elementN; i++)
     vec.push_back(std::move(p[i]));
   if(release){
-    freeFlag= true;
+    ownershipReleased_= true;
     deallocate();
   }
   return vec;

@@ -1,6 +1,6 @@
-#include "FWCore/Services/interface/cudaService_TBBQueueBlocking.h"
+//! CudaService non-template method definitions
+#include "FWCore/Services/interface/cuda_service.h"
 
-/**$$$~~~~~ CudaService non-template method definitions ~~~~~$$$**/
 namespace edm{namespace service{
 CudaService::CudaService(const edm::ParameterSet& pSet, edm::ActivityRegistry& actR):
   cudaDevCount_(0)
@@ -10,6 +10,7 @@ CudaService::CudaService(const edm::ParameterSet& pSet, edm::ActivityRegistry& a
   int deviceCount = 0;
   cudaError_t error_id= cudaSuccess;
   error_id= cudaGetDeviceCount(&deviceCount);
+  //DANGER: Uncomment only for testing fallbacks on a machine with GPU
           // /*!!!*/deviceCount=0;/*!!!*/
   if (error_id == cudaErrorNoDevice || deviceCount == 0){
     std::cout<<"[CudaService]: No device available!\n";

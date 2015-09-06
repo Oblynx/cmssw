@@ -1,3 +1,5 @@
+//! Finds optimal block size for a kernel based on the max occupancy heuristic
+//! __Never__ include this file. (it is needed for the services library)
 ///////////////////////////////////////////////////////////////////////////////
 // 
 // "Hemi" CUDA Portable C/C++ Utilities
@@ -15,14 +17,14 @@
 #ifndef CUDA_LAUNCH_CONFIGURATION_CUH
 #define CUDA_LAUNCH_CONFIGURATION_CUH
 
-#include <cuda_runtime_api.h>
-//#include <cuda_occupancy.h>
 #include "cuda_execution_policy.h"
 #include <functional>
+#include <cuda_runtime_api.h>
+//#include <cuda_occupancy.h>
 
-
-// Convenience function for checking CUDA runtime API results
-// can be wrapped around any runtime API call. No-op in release builds.
+/*! Convenience function for checking CUDA runtime API results when `DEBUG` macro is defined.
+  Can be wrapped around any runtime API call, no-op in release builds.
+*/
 inline cudaError_t checkCuda(cudaError_t result)
 {
 #if defined(DEBUG) || defined(_DEBUG)
@@ -45,6 +47,10 @@ namespace cuda{
   return bytes - sharedSizeBytesStatic;    
 }*/
 
+/*! Automatically configures ExecutionPolicy objects.
+  _Shouldn't be called explicitly_ , but through the `cuda::AutoConfig()()` wrapper
+  @sa cuda_execution_policy.h cuda::AutoConfig
+*/
 template <typename F>
 inline cudaError_t configurePolicy(ExecutionPolicy& p, F&& kernel, int totalThreads= 1,
                       size_t dynamicSMemSize= 0, int blockSizeLimit= 0)

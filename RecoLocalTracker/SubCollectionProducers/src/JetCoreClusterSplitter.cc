@@ -24,7 +24,7 @@
 #include <utility>
 
 #include "FWCore/ServiceRegistry/interface/Service.h"
-#include "FWCore/Services/interface/cudaService_TBBQueueBlocking.h"
+#include "FWCore/Services/interface/cuda_service.h"
 
 extern __global__ void simpleTaskKernel(unsigned meanExp, float* cls,
                                         float* clx, float* cly);

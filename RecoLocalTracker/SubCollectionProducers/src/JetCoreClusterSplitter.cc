@@ -23,13 +23,6 @@
 #include <vector>
 #include <utility>
 
-#include "FWCore/ServiceRegistry/interface/Service.h"
-#include "FWCore/Services/interface/cuda_service.h"
-
-extern __global__ void simpleTaskKernel(unsigned meanExp, float* cls,
-                                        float* clx, float* cly);
-
-
 class JetCoreClusterSplitter : public edm::stream::EDProducer<> {
  public:
   JetCoreClusterSplitter(const edm::ParameterSet& iConfig);
@@ -98,7 +91,6 @@ bool SortPixels(const SiPixelCluster::Pixel& i,
 
 void JetCoreClusterSplitter::produce(edm::Event& iEvent,
                                      const edm::EventSetup& iSetup) {
-  std::cout << "[EDProducer]: Entered produce\n";
   using namespace edm;
   edm::ESHandle<GlobalTrackingGeometry> geometry;
   iSetup.get<GlobalTrackingGeometryRecord>().get(geometry);
@@ -331,7 +323,7 @@ std::vector<SiPixelCluster> JetCoreClusterSplitter::fittingSplit(
         distanceMapX[j][i] = 1. * originalpixels[j].x - clx[i];
         distanceMapY[j][i] = 1. * originalpixels[j].y - cly[i];
         float dist = 0;
-        //				float sizeX=2;
+        //        float sizeX=2;
         if (std::abs(distanceMapX[j][i]) > sizeX / 2.) {
           dist += (std::abs(distanceMapX[j][i]) - sizeX / 2. + 1) *
                   (std::abs(distanceMapX[j][i]) - sizeX / 2. + 1);
@@ -436,18 +428,6 @@ std::vector<SiPixelCluster> JetCoreClusterSplitter::fittingSplit(
       cly[clusterForPixel[pixel_index]] += pixels[pixel_index].second.y * pixels[pixel_index].second.adc;
       cls[clusterForPixel[pixel_index]] += pixels[pixel_index].second.adc;
     }
-
-    // std::cout << "@@@@@@@\n@@@@@@\n@@@@@@@\n@@@@@@@@\n@@@@@@@@";
-    // edm::Service<edm::service::CudaService> cudaService;
-    // cudaPointer<float> CUcls(cudaService, cls), CUclx(cudaService, clx),
-    //                    CUcly(cudaService, cly);
-    // auto execPol= cudaService->configureLaunch(meanExp, simpleTaskKernel);
-    // auto result= cudaService->cudaLaunchManaged(execPol, simpleTaskKernel, meanExp,
-    //                                             CUcls, CUclx, CUcly);
-    // cls= CUcls.getVec(true), clx= CUclx.getVec(true), cly= CUcly.getVec(true);
-    // std::cout << "@@@@@@@\n@@@@@@\n@@@@@@@\n@@@@@@@@\n@@@@@@@@";
-
-    /* Replaced by GPU kernel */
     for (unsigned int subcluster_index = 0;
          subcluster_index < meanExp; subcluster_index++) {
       if (cls[subcluster_index] != 0) {
@@ -460,7 +440,6 @@ std::vector<SiPixelCluster> JetCoreClusterSplitter::fittingSplit(
                   << cly[subcluster_index] << std::endl;
       cls[subcluster_index] = 0;
     }
-
   }
   if (verbose) std::cout << "maxstep " << remainingSteps << std::endl;
   // accumulate pixel with same cl
@@ -499,7 +478,7 @@ std::vector<SiPixelCluster> JetCoreClusterSplitter::fittingSplit(
     }
   }
 
-  //	std::vector<std::vector<std::vector<SiPixelCluster::PixelPos *> > >
+  //  std::vector<std::vector<std::vector<SiPixelCluster::PixelPos *> > >
   //pixelMap(meanExp,std::vector<std::vector<SiPixelCluster::PixelPos *>
   //>(512,std::vector<SiPixelCluster::Pixel *>(512,0)));
 
@@ -522,10 +501,10 @@ std::vector<SiPixelCluster> JetCoreClusterSplitter::fittingSplit(
       if (forceYError_ > 0) output.back().setSplitClusterErrorY(forceYError_);
     }
   }
-  //	if(verbose)	std::cout << "Weights" << std::endl;
-  //	if(verbose)	print(theWeights,aCluster,1);
-  //	if(verbose)	std::cout << "Unused charge" << std::endl;
-  //	if(verbose)	print(theBufferResidual,aCluster);
+  //  if(verbose) std::cout << "Weights" << std::endl;
+  //  if(verbose) print(theWeights,aCluster,1);
+  //  if(verbose) std::cout << "Unused charge" << std::endl;
+  //  if(verbose) print(theBufferResidual,aCluster);
 
   return output;
 }

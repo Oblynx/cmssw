@@ -1,3 +1,15 @@
+## @package CudaServiceIntegrationTest
+#  Configuration script for cmsRun that sets up an integration test for CudaService
+# 
+# This test shows an example use of CudaService. It is actually a modified version of
+# RecoPixelVertexing/PixelTriplets/test/trip_cfg.py
+# 
+# For understanding how to use the service, first read the corresponding TWiki page.
+# For a clear example, read this cfg script and the following files: 
+# - RecoLocalTracker/SiPixelRecHits/plugins/SiPixelRecHitConverter_CudaServiceIntegrationTest.cc
+# - RecoLocalTracker/SiPixelRecHits/src/cudaService_integrationTest_kernel.cu
+# - RecoLocalTracker/SiPixelRecHits/BuildFile.xml
+
 import FWCore.ParameterSet.Config as cms
 process = cms.Process("CudaServiceIntegrationTest")
 
@@ -10,15 +22,16 @@ process.SimpleMemoryCheck=cms.Service("SimpleMemoryCheck",
                                    oncePerEventMode=cms.untracked.bool(False)
 )
 ## Load CudaService to be tested
+# Use the (trivial) cfi script or simply write
+# process.CudaService = cms.Service("CudaService")
 process.load("FWCore.Services.CudaService_cfi")
 
 ## Source *transplanted* from RecoLocalTracker/SiPixelRecHits/test/readRecHits_cfg.py
-source = cms.Source("PoolSource",
+process.source = cms.Source("PoolSource",
    fileNames =  cms.untracked.vstring(
     'file:/afs/cern.ch/work/d/dkotlins/public/MC/mu/pt100_71_pre7/rechits/rechits2_postls171.root'
    )
 )
-process.source = source
 process.maxEvents = cms.untracked.PSet( input = cms.untracked.int32(-1) )
 
 process.load('Configuration.StandardSequences.Services_cff')

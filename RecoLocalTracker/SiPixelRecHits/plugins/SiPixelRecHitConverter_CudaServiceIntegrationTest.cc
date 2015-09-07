@@ -1,26 +1,17 @@
-/** SiPixelRecHitConverter.cc
- * ------------------------------------------------------
- * Description:  see SiPixelRecHitConverter.h
- * Authors:  P. Maksimovic (JHU), V.Chiochia (Uni Zurich)
- * History: Feb 27, 2006 -  initial version
- *          May 30, 2006 -  edm::DetSetVector and edm::Ref
- *          Aug 30, 2007 -  edmNew::DetSetVector
-*			Jan 31, 2008 -  change to use Lorentz angle from DB (Lotte Wilke)
- * ------------------------------------------------------
- */
+//! CudaService integration test: call the service to launch GPU task.
+//! This is a modified version of SiPixelRecHitConverter.cc
+//! The code that calls CudaService can be found at the beginning of the
+//! `SiPixelRecHitConverter::produce()` method.
 
 // Our own stuff
 #include "RecoLocalTracker/SiPixelRecHits/interface/SiPixelRecHitConverter.h"
 // Geometry
 #include "Geometry/Records/interface/TrackerDigiGeometryRecord.h"
 #include "Geometry/TrackerGeometryBuilder/interface/PixelGeomDetUnit.h"
-
 // Data Formats
 #include "DataFormats/DetId/interface/DetId.h"
 #include "DataFormats/Common/interface/Ref.h"
 #include "DataFormats/Common/interface/DetSet2RangeMap.h"
-
-
 // STL
 #include <vector>
 #include <memory>
@@ -29,12 +20,12 @@
 
 // MessageLogger
 #include "FWCore/MessageLogger/interface/MessageLogger.h"
-
 #include "RecoLocalTracker/Records/interface/TkPixelCPERecord.h"
-
+// CudaService
 #include "FWCore/Services/interface/cuda_service.h"
 
 #define TOLERANCEorig 1e-5
+//! Signals test failure.
 #define CPPUNIT_ASSERT_DOUBLES_EQUAL(expected,actual,delta)   \
     if (abs((expected)-(actual)) > (delta)){                  \
       std::cout << "ASSERTION failed\n"                       \
@@ -44,11 +35,12 @@
       break;                                                  \
     }
 
-extern void simpleTask_auto(bool gpu, unsigned& launchSize, unsigned meanExp,
+//~~~@@@ Declare 2 flavours of kernel wrappers and the kernel itself @@@~~~//
+void simpleTask_auto(bool gpu, unsigned& launchSize, unsigned meanExp,
                             float* cls, float* clx, float* cly);
-extern void simpleTask_man(bool gpu, const cuda::ExecutionPolicy& execPol,
+void simpleTask_man(bool gpu, const cuda::ExecutionPolicy& execPol,
                           unsigned meanExp, float* cls, float* clx, float* cly);
-extern __global__ void simpleTask_kernel(unsigned meanExp, float* cls,
+__global__ void simpleTask_kernel(unsigned meanExp, float* cls,
                                          float* clx, float* cly);
 
 using namespace std;
@@ -67,21 +59,20 @@ namespace cms
     produces<SiPixelRecHitCollection>();
     
   }
-  
   // Destructor
   SiPixelRecHitConverter::~SiPixelRecHitConverter() 
   { 
-  }  
-  
+  }
   //---------------------------------------------------------------------------
   //! The "Event" entrypoint: gets called by framework for every event
   //---------------------------------------------------------------------------
   void SiPixelRecHitConverter::produce(edm::Event& e, const edm::EventSetup& es)
   {
     //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-      // Test code transplanted from: FWCore/Services/test/test_cudaService.cppunit.cu
+    {
+      // Test code transplanted from: FWCore/Services/test/test_cudaService_gcc.cppunit.cc
       // Initial CPU code from: RecoLocalTracker/SubCollectionProducers/src/JetCoreClusterSplitter.cc
-      // JetCoreClusterSplitter::fittingSplit
+      // JetCoreClusterSplitter::fittingSplit()
       edm::Service<edm::service::CudaService> cudaService;
       std::random_device rd;
       std::mt19937 mt(rd());
@@ -138,6 +129,7 @@ namespace cms
       if (successN == 3*meanExp)
         std::cout<< "\n[SiPixelRecHitConverter]: --> PASS test\n";
       else std::cout<< "\n[SiPixelRecHitConverter]: --> FAIL test\n";
+    }
     //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
     
     // Step A.1: get input data

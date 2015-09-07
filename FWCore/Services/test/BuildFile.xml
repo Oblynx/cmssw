@@ -1,4 +1,3 @@
-
 <library   file="FpeTester.cc" name="FpeTester">
   <flags   EDM_PLUGIN="1"/>
   <use   name="FWCore/PluginManager"/>
@@ -20,8 +19,9 @@
   <use   name="FWCore/Utilities"/>
 </bin>
 
+<!-- Build CudaService unit test suite (nvcc library + gcc bin) -->
 <library name="TestCudaService_cudaDefs" file="test_cudaService.cu">
-  <use name="FWCore/Services"/>
+  <use   name="FWCore/Services"/>
 </library>
 
 <bin   name="TestCudaService" file="test_cudaService_gcc.cppunit.cc">

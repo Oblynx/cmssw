@@ -1,4 +1,6 @@
+<!-- Added for CudaService integration test -->
 <use name="FWCore/Services"/>
+<!-- Until here -->
 <use   name="FWCore/Framework"/>
 
 <use   name="FWCore/ParameterSet"/>

@@ -1,4 +1,5 @@
 //! Kernels and kernel wrappers used by the CudaService test suite
+//! @sa test_cudaService_gcc.cppunit.cc
 #include "FWCore/Services/interface/utils/cuda_execution_policy.h"
 
 #define BLOCK_SIZE 32
@@ -70,20 +71,8 @@ __global__ void original_kernel(unsigned meanExp, float* cls, float* clx, float*
     original_kernel<<<execPol.getGridSize(), execPol.getBlockSize()>>>(meanExp,cls,clx,cly);
   }
 
-//@@@@@@@@@@@@@@@@
-__global__
-void simpleTask_GPU(unsigned meanExp, float* cls, float* clx, float* cly)
-{
-  unsigned i= blockDim.x*blockIdx.x+threadIdx.x;
-  if(i<meanExp){
-    if (cls[i] != 0){
-      clx[i] /= cls[i];
-      cly[i] /= cls[i];
-    }
-    cls[i]= 0;
-  }
-}
-void simpleTask_CPU(unsigned meanExp, float* cls, float* clx, float* cly)
+//@@@@@@@@@@@@@@@@ FALLBACK for "original_kernel"
+void original_CPU(unsigned meanExp, float* cls, float* clx, float* cly)
 {
   for (unsigned int subcl_idx = 0;
        subcl_idx < meanExp; subcl_idx++){

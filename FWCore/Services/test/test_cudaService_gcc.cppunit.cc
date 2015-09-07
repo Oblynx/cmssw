@@ -1,8 +1,18 @@
+/*! Unit test suite for the `CudaService`. Each test examines a particular function
+  of the service. The way the service is used here __is not typical__ of how
+  it should be used in CMSSW code, because:
+  - In order to make each test independent, a new `CudaService` is constructed for
+  each test, while the previous instance is stopped. In actual CMSSW code services
+  are only created implicitly by the framework __and not__ in physics code.
+  - The `Service` smart pointer is wrapped in an `std::unique_ptr`.
+
+  This test suite can provide some specific examples of using `CudaService`, but for
+  a complete example use of `CudaService`, look at the CudaService integration test.
+  @sa integrationTest_cudaService_cfg.py
+*/
 // Service to test
 #include "FWCore/Services/interface/cuda_service.h"
-#include <cuda_runtime.h>
-
-// std
+// system
 #include <iostream>
 #include <vector>
 #include <future>
@@ -12,14 +22,12 @@
 #include <algorithm>
 #include <thread>
 #include <chrono>
-
+#include <random>
+#include <cuda_runtime.h>
 // CMSSW
-#include "FWCore/ServiceRegistry/interface/Service.h"
 #include "FWCore/ServiceRegistry/interface/ServiceRegistry.h"
-
 #include "FWCore/PluginManager/interface/standard.h"
 #include "FWCore/PluginManager/interface/PluginManager.h"
-
 // cppunit-specific
 #include "cppunit/extensions/HelperMacros.h"
 #include "Utilities/Testing/interface/CppUnit_testdriver.icpp"
@@ -29,39 +37,41 @@ using namespace std;
 using namespace edm;
 
 class TestCudaService: public CppUnit::TestFixture {
+  //CPPUNIT: declare tests to be run
   CPPUNIT_TEST_SUITE(TestCudaService);
   CPPUNIT_TEST(basicUseTest);
   CPPUNIT_TEST(passServiceArgTest);
-  CPPUNIT_TEST(CUDAAutolaunchManagedTest);
-  CPPUNIT_TEST(CUDAAutolaunch2Dconfig);
-  CPPUNIT_TEST(CudaPointerAutolaunchTest);
+  CPPUNIT_TEST(cudaLaunch_managedDataTest);
+  CPPUNIT_TEST(cudaLaunch_managedData_2DLaunchConfigTest);
+  CPPUNIT_TEST(cudaPointer_cudaLaunchTest);
   CPPUNIT_TEST(timeBenchmarkTask);
   CPPUNIT_TEST(latencyHiding);
   CPPUNIT_TEST(originalKernelTest);
   CPPUNIT_TEST_SUITE_END();
 public:
-  //!< @brief 
+  //! Construct a new `CudaService` for each test, to make the tests independent
   void setUp();
-  //!< @brief Release all service resources, but service destructor can't be called
+  //! Release all service resources, but service destructor can't be called here
   void tearDown() {
     (*cuSerPtr)->clearTasks();
     (*cuSerPtr)->stopWorkers();
     cout<<"\n\n";
   }
+  //! Test basic `ThreadPool` functionality
   void basicUseTest();
-  //!< @brief Test behaviour if the task itself enqueues another task in same pool
+  //! Test behaviour if the task itself enqueues another task in same `ThreadPool`
   void passServiceArgTest();
-  //!< @brief Test auto launch cuda kernel with its arguments in managed memory
-  void CUDAAutolaunchManagedTest();
-  //!< @brief Use auto config to manually configure a 2D kernel launch
-  void CUDAAutolaunch2Dconfig();
-  //!< @brief Test usage of the smart cuda pointer class "cudaPointer"
-  void CudaPointerAutolaunchTest();
-  //!< @brief Time a simple use case of the service
+  //! Test cudaLaunch API with kernel args declared manually in managed memory
+  void cudaLaunch_managedDataTest();
+  //! Use `AutoConfig()` as a recommendation to manually configure a 2D kernel launch
+  void cudaLaunch_managedData_2DLaunchConfigTest();
+  //! Test usage of the smart cuda pointer class `cudaPointer`
+  void cudaPointer_cudaLaunchTest();
+  //! Time the assignment and launch of a few (CPU) tasks in the `ThreadPool`
   void timeBenchmarkTask();
-  //!< @brief Test launch latency at different thread numbers
+  //! Experiment on how more threads in `CudaService` affects kernel launch latency
   void latencyHiding();
-  //!< @brief Test performance of a kernel made from actual CMS CPU code
+  //! Test performance of a kernel made from actual CMS physics CPU code
   void originalKernelTest();
 private:
   void print_id(int id);
@@ -78,10 +88,10 @@ private:
   unique_ptr<Service<service::CudaService>> cuSerPtr;
 };
 
-///Registration of the test suite so that the runner can find it
+//! CPPUNIT: Registration of the test suite so that the test runner can find it
 CPPUNIT_TEST_SUITE_REGISTRATION(TestCudaService);
 
-/* kernel declarations */
+/*$$$--- KERNEL DECLARATIONS ---$$$*/
 __global__ void long_kernel(const int n, const int times, const float* in, float* out);
 void long_auto(bool gpu, unsigned& launchSize, const int n, const int times, const float* in, float* out);
 void long_man(bool gpu, const cuda::ExecutionPolicy& execPol, const int n,
@@ -96,8 +106,7 @@ __global__ void original_kernel(unsigned meanExp, float* cls, float* clx, float*
 void original_man(bool gpu, const cuda::ExecutionPolicy& execPol,
                 unsigned meanExp, float* cls, float* clx, float* cly);
 
-/*$$$---TESTS BEGIN---$$$*/
-
+/*$$$--- TESTS BEGIN ---$$$*/
 void TestCudaService::basicUseTest(){
   cout<<"Starting basic test...\n";
   (*cuSerPtr)->schedule([]() {cout<<"Empty task\n";}).get();
@@ -135,12 +144,12 @@ void TestCudaService::passServiceArgTest(){
   }, std::cref(*cuSerPtr)).get();
 }
 #define TOLERANCEmul 5e-1
-void TestCudaService::CUDAAutolaunchManagedTest(){
+void TestCudaService::cudaLaunch_managedDataTest(){
   if (!(*cuSerPtr)->GPUpresent()){
     cout<<"GPU not available, skipping test.\n";
     return;
   }
-  cout<<"Starting CUDA autolaunch (managed) test...\n";
+  cout<<"Starting cudaLaunch with manual managed data test...\n";
   float *in, *out;
   const int n= 10000000, times= 1000;
   cudaMallocManaged(&in, n*sizeof(float));  //cudaMemAttachHost?
@@ -168,20 +177,19 @@ void TestCudaService::CUDAAutolaunchManagedTest(){
   cudaFree(out);
 }
 #define TOLERANCEadd 1e-15
-void TestCudaService::CUDAAutolaunch2Dconfig(){
+void TestCudaService::cudaLaunch_managedData_2DLaunchConfigTest(){
   if (!(*cuSerPtr)->GPUpresent()){
     cout<<"GPU not available, skipping test.\n";
     return;
   }
-
-  cout<<"Starting CUDA 2D launch config test...\n";
+  cout<<"Starting cudaLaunch with manual managed data 2D launch configuration test...\n";
   const int threadN= std::thread::hardware_concurrency();
   vector<future<cudaError_t>> futVec(threadN);
   float *A[threadN], *B[threadN], *C[threadN];
   // m: number of rows
   // n: number of columns
   unsigned m= 1000, n= 100;
-  //Setup data
+  // Setup data
   for(int thread=0; thread<threadN; thread++){
     cudaMallocManaged(&A[thread], m*n*sizeof(float));
     cudaMallocManaged(&B[thread], m*n*sizeof(float));
@@ -191,8 +199,7 @@ void TestCudaService::CUDAAutolaunch2Dconfig(){
       B[thread][i]= (thread+1)*sin(PI/100*i+PI/6)*sin(PI/100*i+PI/6);
     }
   }
-
-  //Recommended launch configuration (1D)
+  //Get recommended launch configuration (1D)
   auto execPol= cuda::AutoConfig()(n*m, (void*)matAdd_kernel);
   //Explicitly set desired launch config (2D) based on the previous recommendation
   const unsigned blockSize= sqrt(execPol.getBlockSize().x);
@@ -206,11 +213,10 @@ void TestCudaService::CUDAAutolaunch2Dconfig(){
   }
   cout<<"Launch config:\nBlock="<<execPol.getBlockSize().x<<", "<<execPol.getBlockSize().y;
   cout<<"\nGrid="<<execPol.getGridSize().x<<", "<<execPol.getGridSize().y<<"\n\n";
-  //...
+  //... <work with other data here>
   for(auto&& elt: futVec) {
     elt.get();
   }
-
   for(int thread=0; thread<threadN; thread++){
     //Assert matrix addition correctness
     for (unsigned i=0; i<n*m; i++)
@@ -221,13 +227,12 @@ void TestCudaService::CUDAAutolaunch2Dconfig(){
     cudaFree(A[thread]); cudaFree(B[thread]); cudaFree(C[thread]);
   }
 }
-void TestCudaService::CudaPointerAutolaunchTest(){
-  cout<<"Starting *CudaPointer* autolaunch test...\n";
+void TestCudaService::cudaPointer_cudaLaunchTest(){
+  cout<<"Starting \"cudaPointer\" test...\n";
   const int n= 10000000, times= 1000;
   cudaPointer<float> in (n);
   cudaPointer<float> out(n);
   for(int i=0; i<n; i++) in.p[i]= 10*cos(3.141592/100*i);
-
   cout<<"Launching auto...\n";
   // Auto launch config
   (*cuSerPtr)->cudaLaunch((unsigned)n, long_auto, n,times,in,out).get();
@@ -235,7 +240,8 @@ void TestCudaService::CudaPointerAutolaunchTest(){
     cout<<"ERROR: i="<<i<<'\n';
     CPPUNIT_ASSERT_DOUBLES_EQUAL(times*in.p[i], out.p[i], TOLERANCEmul);
   }
-
+  // 2nd kernel launch...
+  for(int i=0; i<n; i++) in.p[i]= 5*cos(3.141592/100*i);
   cout<<"Launching manual with explicit auto config...\n";
   // Auto config
   auto execPol= cuda::AutoConfig()(n, (void*)long_kernel);
@@ -283,7 +289,7 @@ void TestCudaService::timeBenchmarkTask(){
   diff= start-start;
   for (int i = 0; i <= N; ++i)
   {
-    //Assign [threadN] tasks and wait for results
+    //Assign [threadN] tasks (heavyBurden * threads in pool) and wait for results
     start = chrono::steady_clock::now();
     for(register int thr=0; thr<threadN; thr++)
       futVec[thr]= (*cuSerPtr)->schedule([] (){
@@ -344,8 +350,6 @@ void TestCudaService::latencyHiding()
          << " μs\t"<<chrono::duration<double, nano>(diff).count()/N/threads/1000<<" μs per thread\n";
   }
 }
-
-#include <random>
 #define TOLERANCEorig 1e-5
 void TestCudaService::originalKernelTest(){
   cout<< "Starting original kernel test...\n";
@@ -396,8 +400,7 @@ void TestCudaService::originalKernelTest(){
   for(auto&& fut: futVec) fut.get();  
   cout <<clx.p[100];
 }
-
-/*$$$---TESTS END---$$$*/
+/*$$$--- TESTS END ---$$$*/
 
 void TestCudaService::setUp(){
   static atomic_flag notFirstTime= ATOMIC_FLAG_INIT;
@@ -407,11 +410,11 @@ void TestCudaService::setUp(){
     edmplugin::PluginManager::configure(edmplugin::standard::config());
   }
   //Alternative way to setup Services
-  /*ParameterSet pSet;
-  pSet.addParameter("@service_type", string("CudaService"));
-  pSet.addParameter("thread_num", 2*std::thread::hardware_concurrency());
-  vector<ParameterSet> vec;
-  vec.push_back(pSet);*/
+  // ParameterSet pSet;
+  // pSet.addParameter("@service_type", string("CudaService"));
+  // pSet.addParameter("thread_num", 2*std::thread::hardware_concurrency());
+  // vector<ParameterSet> vec;
+  // vec.push_back(pSet);
   serviceToken= edm::ServiceRegistry::createServicesFromConfig(
         "import FWCore.ParameterSet.Config as cms\n"
         "process = cms.Process('testThreadPoolService')\n"

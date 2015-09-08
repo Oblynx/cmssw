@@ -207,10 +207,10 @@ namespace edm{namespace service{
         kernelWrap(true, launchParam, utils::passKernelArg<Args>(args)...);
         attempt++;
         status= cudaStreamSynchronize(cudaStreamPerThread);
+        utils::operateParamPack(utils::releaseKernelArg<Args>(args)...);
         if (status!= cudaSuccess) std::this_thread::sleep_for(
                                               std::chrono::microseconds(30));
       }while(status == cudaErrorDevicesUnavailable && attempt < maxKernelAttempts_);
-      utils::operateParamPack(utils::releaseKernelArg<Args>(args)...);
       return status;
     }));
     std::future<cudaError_t> resultFut= task->get_future();
@@ -220,6 +220,5 @@ namespace edm{namespace service{
 
   // The other non-template methods are defined in the .cu file
 }} // namespace edm::service
-
 
 #endif // Cuda_Service_H

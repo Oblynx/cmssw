@@ -44,6 +44,7 @@ class TestCudaService: public CppUnit::TestFixture {
   CPPUNIT_TEST(cudaLaunch_managedDataTest);
   CPPUNIT_TEST(cudaLaunch_managedData_2DLaunchConfigTest);
   CPPUNIT_TEST(cudaPointer_cudaLaunchTest);
+  CPPUNIT_TEST(cudaPointer_complexDataStructureTest);
   CPPUNIT_TEST(timeBenchmarkTask);
   CPPUNIT_TEST(latencyHiding);
   CPPUNIT_TEST(originalKernelTest);
@@ -67,6 +68,8 @@ public:
   void cudaLaunch_managedData_2DLaunchConfigTest();
   //! Test usage of the smart cuda pointer class `cudaPointer`
   void cudaPointer_cudaLaunchTest();
+  //! Test complex data structure with cudaPointer
+  void cudaPointer_complexDataStructureTest();
   //! Time the assignment and launch of a few (CPU) tasks in the `ThreadPool`
   void timeBenchmarkTask();
   //! Experiment on how more threads in `CudaService` affects kernel launch latency
@@ -105,6 +108,14 @@ void matAdd_man(bool gpu, const cuda::ExecutionPolicy& execPol,int m, int n, con
 __global__ void original_kernel(unsigned meanExp, float* cls, float* clx, float* cly);
 void original_man(bool gpu, const cuda::ExecutionPolicy& execPol,
                 unsigned meanExp, float* cls, float* clx, float* cly);
+// for cudaPointer_complexDataStructureTest
+struct KernelData{
+  int a, b;
+  cudaPointer<float[]> arrayIn;
+  cudaPointer<float[]> arrayOut;
+};
+void actOnStructWrapper(bool gpu, const cuda::ExecutionPolicy& execPol,
+                        KernelData* data);
 
 /*$$$--- TESTS BEGIN ---$$$*/
 void TestCudaService::basicUseTest(){
@@ -230,8 +241,8 @@ void TestCudaService::cudaLaunch_managedData_2DLaunchConfigTest(){
 void TestCudaService::cudaPointer_cudaLaunchTest(){
   cout<<"Starting \"cudaPointer\" test...\n";
   const int n= 10000000, times= 1000;
-  cudaPointer<float> in (n);
-  cudaPointer<float> out(n);
+  cudaPointer<float[]> in (n);
+  cudaPointer<float[]> out(n);
   for(int i=0; i<n; i++) in[i]= 10*cos(3.141592/100*i);
   cout<<"Launching auto...\n";
   // Auto launch config
@@ -249,6 +260,20 @@ void TestCudaService::cudaPointer_cudaLaunchTest(){
   for(int i=0; i<n; i++) if (abs(times*in[i]-out[i])>TOLERANCEmul){
     cout<<"ERROR: i="<<i<<'\n';
     CPPUNIT_ASSERT_DOUBLES_EQUAL(times*in[i], out[i], TOLERANCEmul);
+  }
+}
+void TestCudaService::cudaPointer_complexDataStructureTest(){
+  cout<<"Starting \"cudaPointer\" complex data structure test...\n";
+  KernelData data;
+  int n= 100000;
+  data.a= 1, data.b= 2; data.arrayIn.reset(n); data.arrayOut.reset(n);
+  for(int i=0; i<n; i++) data.arrayIn[i]= 10*cos(3.141592/100*i);
+  cuda::ExecutionPolicy execPol;
+  execPol.setBlockSize({1024}).setGridSize({(unsigned)n});
+  (*cuSerPtr)->cudaLaunch(execPol, actOnStructWrapper, &data).get();
+  for(int i=0; i<n; i++) if (abs((data.arrayIn[i]+data.a*data.b)-data.arrayOut[i])>TOLERANCEmul){
+    cout<<"ERROR: i="<<i<<'\n';
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(data.arrayIn[i]+data.a*data.b, data.arrayOut[i], TOLERANCEmul);
   }
 }
 void TestCudaService::timeBenchmarkTask(){
@@ -316,8 +341,8 @@ void TestCudaService::latencyHiding()
   auto diff= start-start;
   future<void> fut;
   const short threadN= std::thread::hardware_concurrency();
-  const int kernelSize= 10000, times= 1000;
-  vector<cudaPointer<float>> in, out;             //threadN data chunks
+  const int kernelSize= 10, times= 1;
+  vector<cudaPointer<float[]>> in, out;             //threadN data chunks
   for(int thread=0; thread<threadN; thread++){
     in.emplace_back(kernelSize), out.emplace_back(kernelSize);
     for(int i=0; i<kernelSize; i++)
@@ -358,7 +383,7 @@ void TestCudaService::originalKernelTest(){
   uniform_real_distribution<float> randFl(0, 1000);
   vector<future<void>> futVec(3);
   unsigned meanExp= 1000000;
-  cudaPointer<float> cls(meanExp), clx(meanExp),
+  cudaPointer<float[]> cls(meanExp), clx(meanExp),
                      cly(meanExp);
   //Initialize
   futVec[0]= (*cuSerPtr)->schedule([&] {

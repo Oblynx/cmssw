@@ -14,9 +14,9 @@ namespace edm{namespace service{
               typename std::remove_reference<typename std::remove_cv<T>::type>
               ::type >::value, int >::type= 0>
     static inline auto passKernelArg(typename std::remove_reference<T>::type& cudaPtr)
-        noexcept -> decltype(cudaPtr.p){
+        noexcept -> decltype(cudaPtr.get()){
       cudaPtr.attachStream();
-      return cudaPtr.p;
+      return cudaPtr.get();
     }
     //! Perfectly forward non-cudaPointer args (based on std::forward)
     template<typename T, typename std::enable_if< !std::is_base_of< cudaPtrBase,

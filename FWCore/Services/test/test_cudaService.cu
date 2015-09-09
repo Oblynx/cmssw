@@ -91,12 +91,15 @@ struct KernelData{
   cudaPointer<float[]> arrayIn;
   cudaPointer<float[]> arrayOut;
 };
+// "cudaPointer[]: calling host function from kernel"
+// "illegal memory access encountered"?
 __global__ void actOnStructKernel(KernelData* data){
   int i= blockDim.x*blockIdx.x+threadIdx.x;
-  if (i < data->arrayIn.size())
-    data->arrayOut[i]= data->arrayIn[i]+data->a*data->b;
+  if (i < data->arrayIn.size(true))
+    data->arrayOut.at(i)= data->arrayIn.at(i)+data->a*data->b;
 }
 void actOnStructWrapper(bool gpu, const cuda::ExecutionPolicy& execPol,
                         KernelData* data){
   if(gpu) actOnStructKernel<<<execPol.getGridSize(), execPol.getBlockSize()>>>(data);
 }
+

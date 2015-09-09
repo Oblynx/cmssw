@@ -79,24 +79,24 @@ namespace cms
       std::uniform_real_distribution<float> randFl(0, 1000);
       std::vector<std::future<void>> futVec(3);
       unsigned meanExp= 1000;
-      cudaPointer<float> cls(meanExp), clx(meanExp),
-                         cly(meanExp);
+      cudaPointer<float[]> cls(meanExp), clx(meanExp),
+                           cly(meanExp);
       //Initialize
       futVec[0]= cudaService->schedule([&] {
-        for(unsigned i=0; i<meanExp; i++) cls.p[i]= randFl(mt); });
+        for(unsigned i=0; i<meanExp; i++) cls[i]= randFl(mt); });
       futVec[1]= cudaService->schedule([&] {
-        for(unsigned i=0; i<meanExp; i++) clx.p[i]= randFl(mt); });
+        for(unsigned i=0; i<meanExp; i++) clx[i]= randFl(mt); });
       futVec[2]= cudaService->schedule([&] {
-        for(unsigned i=0; i<meanExp; i++) cly.p[i]= randFl(mt); });
+        for(unsigned i=0; i<meanExp; i++) cly[i]= randFl(mt); });
       for(auto&& fut: futVec) fut.get();
 
       //Calculate results on CPU
       std::vector<float> cpuCls(meanExp), cpuClx(meanExp), cpuCly(meanExp);
       for (unsigned i= 0; i < meanExp; i++)
       {
-        if (cls.p[i] != 0) {
-          cpuClx[i]= clx.p[i]/cls.p[i];
-          cpuCly[i]= cly.p[i]/cls.p[i];
+        if (cls[i] != 0) {
+          cpuClx[i]= clx[i]/cls[i];
+          cpuCly[i]= cly[i]/cls[i];
         }
         cpuCls[i]= 0;
       }
@@ -115,15 +115,15 @@ namespace cms
       std::atomic<unsigned> successN; successN= 0;
       futVec[0]= cudaService->schedule([&] {
         for(unsigned i=0; i<meanExp; i++, successN++)
-          CPPUNIT_ASSERT_DOUBLES_EQUAL(cpuCls[i], cls.p[i], TOLERANCEorig);
+          CPPUNIT_ASSERT_DOUBLES_EQUAL(cpuCls[i], cls[i], TOLERANCEorig);
       });
       futVec[1]= cudaService->schedule([&] {
         for(unsigned i=0; i<meanExp; i++, successN++)
-          CPPUNIT_ASSERT_DOUBLES_EQUAL(cpuCls[i], cls.p[i], TOLERANCEorig);
+          CPPUNIT_ASSERT_DOUBLES_EQUAL(cpuCls[i], cls[i], TOLERANCEorig);
       });
       futVec[2]= cudaService->schedule([&] {
         for(unsigned i=0; i<meanExp; i++, successN++)
-          CPPUNIT_ASSERT_DOUBLES_EQUAL(cpuCls[i], cls.p[i], TOLERANCEorig);
+          CPPUNIT_ASSERT_DOUBLES_EQUAL(cpuCls[i], cls[i], TOLERANCEorig);
       });
       for(auto&& fut: futVec) fut.get();
       if (successN == 3*meanExp)

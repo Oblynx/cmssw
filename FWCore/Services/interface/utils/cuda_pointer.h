@@ -88,7 +88,8 @@ public:
   //! Allocate the requested memory after freeing any previous allocation
   void reset(int elementN){
     if (attachment_ == noAlloc){
-      elementN_= elementN;
+      attachment_= host;
+      elementN_= elementN; sizeOnDevice_= elementN_*sizeof(T);
       allocate();
     } else if (!ownershipReleased_){
       deallocate();
@@ -116,7 +117,13 @@ public:
     else throw new std::runtime_error("Illegal cudaPointer access from CPU, "
                                       "while currently in use by the GPU.\n");
   }
+  // OVERLOAD for device?
+  __device__ T& at(int idx) const{
+    return data_[idx];
+  }
   int size() { return elementN_; }
+  // OVERLOAD for device?
+  __device__ int size(bool) { return elementN_; }
 private:
   //! Attaches the memory to the provided CUDA stream
   void attachStream(cudaStream_t stream= cudaStreamPerThread){

@@ -62,7 +62,7 @@ protected:
   
   - Uses Unified Memory (`cudaMallocManaged`)
   - __NOT__ thread safe.
-  - TODO: future support for STL data_ types, like vectors.
+  - TODO: future support for STL data types, like vectors.
   - TODO: future support for GPU constant && texture memory
 */
 template<typename T>
@@ -231,7 +231,7 @@ private:
 
 /*! Base of all structures that contain cudaPointer members.
   
-  - FUTURE: provide an abstract virtual method that passes stream attach and release
+  - [FUTURE]: provide an abstract virtual method that passes stream attach and release
   signals to contained cudaPointers from the (pass/release)KernelArg methods (which
   need to be adjusted accordingly). Would this make compound cudaPointer structs work?
 */

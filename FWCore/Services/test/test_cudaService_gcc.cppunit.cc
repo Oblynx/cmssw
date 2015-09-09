@@ -130,6 +130,8 @@ struct ArithmStruct{
 };
 void actOnArithmStructWrapper(bool gpu, const cuda::ExecutionPolicy& execPol,
                               int n, ArithmStruct* inStruct, float* out);
+// alternative for latencyHiding
+void trivialWrapper(bool gpu, const cuda::ExecutionPolicy& execPol);
 
 /*$$$--- TESTS BEGIN ---$$$*/
 void TestCudaService::basicUseTest(){
@@ -364,7 +366,7 @@ void TestCudaService::latencyHiding(){
   auto end = start;
   auto diff= start-start;
   future<void> fut;
-  const short threadN= std::thread::hardware_concurrency()-3, heavyBurden= 2;
+  const short threadN= std::thread::hardware_concurrency()-3, heavyBurden= 1;
   const int kernelSize= 1*1024, times= 0;
   // Produce heavyBurden*threadN independent data chunks
   vector<cudaPointer<float[]>> in, out;
@@ -390,6 +392,7 @@ void TestCudaService::latencyHiding(){
       for(register short task=0; task<heavyBurden*threadsInPool; task++)
         futVec[task]= (*cuSerPtr)->cudaLaunch(execPol,long_man,kernelSize,times,
                                              in[task],out[task]);
+        // futVec[task]= (*cuSerPtr)->cudaLaunch(execPol,trivialWrapper);
       for(auto&& elt: futVec) {
         elt.get();
       }
@@ -402,10 +405,16 @@ void TestCudaService::latencyHiding(){
          <<chrono::duration<double, micro>(diff).count()/N/threadsInPool/heavyBurden
          <<" μs per task\n";
   }
-  //tasks=1,  threads=4: 20.5μs per task
+  //  --> Results for NON-trivial kernel:
+  //tasks=4,  threads=4: 20.5μs per task
   //tasks=8,  threads=4: 19.4μs per task
   //tasks=12, threads=4: 18.2μs per task
   //tasks=40, threads=4: 17.1μs per task
+
+  //  --> Results for trivial kernel:
+  //tasks=4,  threads=4: 9.3μs per task
+  //tasks=8,  threads=4: 8μs per task
+
   //Observation about the kernel launch latency:
   //  For heavy task burdens, the minimum shifts towards 2-3 threads/GPU;
   //  for low task burdens, the minimum is between 4-5 threads/GPU.

@@ -121,3 +121,13 @@ void actOnArithmStructWrapper(bool gpu, const cuda::ExecutionPolicy& execPol,
   if (gpu) actOnArithmStructKernel<<<execPol.getGridSize(), execPol.getBlockSize()>>>(
             n, inStruct, out);
 }
+
+//@@@@@@@@@@@@@@@@ Trivial kernel for time benchmark
+__global__ void trivialKernel(){
+  int i= blockDim.x*blockIdx.x+threadIdx.x;
+  bool tmp;
+  tmp= i>10;
+}
+void trivialWrapper(bool gpu, const cuda::ExecutionPolicy& execPol){
+  if (gpu) trivialKernel<<<execPol.getGridSize(), execPol.getBlockSize()>>>();
+}

@@ -1,5 +1,5 @@
 //! GPU-managing service and Thread Pool -- Should be included whenever the service is needed
-/*  Thread pool notice:
+/*  The ThreadPool is based on a Github project. Notice:
   Copyright (c) 2012 Jakob Progsch, Václav Zeman
   This software is provided 'as-is', without any express or implied
   warranty. In no event will the authors be held liable for any damages

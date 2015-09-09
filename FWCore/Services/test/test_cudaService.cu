@@ -85,8 +85,9 @@ void original_CPU(unsigned meanExp, float* cls, float* clx, float* cly)
   }
 }
 
-//@@@@@@@@@@@@@@@@ FALLBACK for "original_kernel"
-struct KernelData{
+//@@@@@@@@@@@@@@@@ Advanced cudaPointer tests
+// Compound data structure containing cudaPointer
+struct KernelData: ContainsCudaPointer{
   int a, b;
   cudaPointer<float[]> arrayIn;
   cudaPointer<float[]> arrayOut;
@@ -103,3 +104,20 @@ void actOnStructWrapper(bool gpu, const cuda::ExecutionPolicy& execPol,
   if(gpu) actOnStructKernel<<<execPol.getGridSize(), execPol.getBlockSize()>>>(data);
 }
 
+// Simple arithmetic data structure
+struct ArithmStruct{
+  int a, b;
+  float c;
+};
+__global__ void actOnArithmStructKernel(int n, ArithmStruct* inStruct, float* out){
+  int i= blockDim.x*blockIdx.x+threadIdx.x;
+  if (i < n){
+    auto& tmp= inStruct[i];
+    out[i]= sinf(tmp.c)+tmp.b-tmp.a;
+  }
+}
+void actOnArithmStructWrapper(bool gpu, const cuda::ExecutionPolicy& execPol,
+                              int n, ArithmStruct* inStruct, float* out){
+  if (gpu) actOnArithmStructKernel<<<execPol.getGridSize(), execPol.getBlockSize()>>>(
+            n, inStruct, out);
+}

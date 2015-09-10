@@ -234,6 +234,7 @@ private:
   - [FUTURE]: provide an abstract virtual method that passes stream attach and release
   signals to contained cudaPointers from the (pass/release)KernelArg methods (which
   need to be adjusted accordingly). Would this make compound cudaPointer structs work?
+  - This might be useful: https://en.wikibooks.org/wiki/More_C%2B%2B_Idioms/Member_Detector
 */
 struct ContainsCudaPointer {};
 
